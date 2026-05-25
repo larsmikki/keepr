@@ -1,0 +1,235 @@
+import type { Document, RescanResult, ImportResult, PaginatedResponse, MetadataSuggestion, AiSettings, AiMetadataSuggestion } from '@/types';
+
+const BASE = '/api';
+
+async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${url}`, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...opts?.headers },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let message = text;
+    try {
+      const data = JSON.parse(text) as { error?: string };
+      message = data.error || text;
+    } catch {}
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export interface FilterPreset {
+  id?: number;
+  name: string;
+  search?: string;
+  category?: string;
+  documentType?: string;
+  favorite?: boolean;
+  archived?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+  tag?: string;
+  amountMin?: number;
+  amountMax?: number;
+  currency?: string;
+  fileSizeMin?: number;
+  fileSizeMax?: number;
+  noMetadata?: boolean;
+  sortBy?: string;
+  sortDir?: string;
+}
+
+export const api = {
+  getMetadataSuggestions: (filename: string) =>
+    fetchJson<MetadataSuggestion>(`/metadata/suggest?filename=${encodeURIComponent(filename)}`),
+  getDocuments: (params?: { limit?: number; offset?: number; search?: string; category?: string; documentType?: string; sortBy?: string; sortDir?: string; favorite?: boolean; archived?: boolean; dateFrom?: string; dateTo?: string; tag?: string; amountMin?: number; amountMax?: number; currency?: string; fileSizeMin?: number; fileSizeMax?: number; noMetadata?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    if (params?.search) query.set('search', params.search);
+    if (params?.category) query.set('category', params.category);
+    if (params?.documentType) query.set('documentType', params.documentType);
+    if (params?.sortBy) query.set('sortBy', params.sortBy);
+    if (params?.sortDir) query.set('sortDir', params.sortDir);
+    if (params?.favorite !== undefined) query.set('favorite', String(params.favorite));
+    if (params?.archived !== undefined) query.set('archived', String(params.archived));
+    if (params?.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) query.set('dateTo', params.dateTo);
+    if (params?.tag) query.set('tag', params.tag);
+    if (params?.amountMin !== undefined) query.set('amountMin', String(params.amountMin));
+    if (params?.amountMax !== undefined) query.set('amountMax', String(params.amountMax));
+    if (params?.currency) query.set('currency', params.currency);
+    if (params?.fileSizeMin !== undefined) query.set('fileSizeMin', String(params.fileSizeMin));
+    if (params?.fileSizeMax !== undefined) query.set('fileSizeMax', String(params.fileSizeMax));
+    if (params?.noMetadata !== undefined) query.set('noMetadata', String(params.noMetadata));
+    const url = '/documents' + (query.toString() ? `?${query.toString()}` : '');
+    return fetchJson<PaginatedResponse<Document> | Document[]>(url);
+  },
+
+  getAllDocuments: () =>
+    fetchJson<Document[]>('/documents'),
+
+  getTags: () =>
+    fetchJson<string[]>('/documents/tags'),
+
+  getDocumentTypes: () =>
+    fetchJson<string[]>('/documents/types'),
+
+  getDocumentActivity: (months = 12) =>
+    fetchJson<Array<{ month: string; count: number; totalSize: number }>>(`/documents/activity?months=${months}`),
+
+  getDuplicates: () =>
+    fetchJson<Record<string, Document[]>>('/documents/duplicates'),
+
+  checkMissingDocuments: () =>
+    fetchJson<{ missing: Array<{ id: string; title: string; filePath: string }>; orphanedSidecars: Array<{ id: string; title: string; sidecarPath: string }> }>('/documents/check-missing'),
+
+  getDocument: (id: string) =>
+    fetchJson<Document>(`/documents/${id}`),
+
+  updateDocument: (id: string, updates: Partial<Document>) =>
+    fetchJson<{ success: boolean }>(`/metadata/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+
+  deleteDocument: (id: string) =>
+    fetchJson<{ success: boolean }>(`/documents/${id}`, { method: 'DELETE' }),
+
+  updateDocumentMetadata: (id: string, updates: Partial<Document>) =>
+    fetchJson<{ success: boolean }>(`/metadata/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+
+  bulkUpdateDocuments: (ids: string[], updates: Partial<Document>) =>
+    fetchJson<{ success: boolean; updatedCount: number }>('/bulk', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids, updates }),
+    }),
+
+  bulkDeleteDocuments: (ids: string[]) =>
+    fetchJson<{ success: boolean; deletedCount: number }>('/bulk', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    }),
+
+  uploadDocuments: (files: File[], metadata: Record<string, any>): Promise<{ results: Array<{ documentId: string; filePath: string; filename: string; duplicate?: boolean; existingDocumentId?: string; error?: string }> }> => {
+    const form = new FormData();
+    files.forEach(file => form.append('files', file));
+    form.append('metadata', JSON.stringify(metadata));
+    return fetch(`${BASE}/documents/upload-batch`, { method: 'POST', body: form }).then(async r => {
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    });
+  },
+
+  importFolder: (folderPath: string) =>
+    fetchJson<ImportResult>('/import/import-folder', {
+      method: 'POST',
+      body: JSON.stringify({ folderPath }),
+    }),
+
+  rescan: (deleteMissing = false) =>
+    fetchJson<RescanResult>('/rescan/run', { method: 'POST', body: JSON.stringify({ deleteMissing }), headers: { 'Content-Type': 'application/json' } }),
+
+  getConfig: () =>
+    fetchJson<{ vaultRoot: string; port: number }>('/config'),
+
+  getSettings: () =>
+    fetchJson<AiSettings>('/settings'),
+
+  getStorageStats: () =>
+    fetchJson<{
+      totalDocuments: number;
+      totalSize: number;
+      byCategory: Array<{ category: string; count: number; size: number }>;
+      byType: Array<{ documentType: string; count: number; size: number }>;
+      diskUsage: { used: number; free: number; total: number };
+    }>('/settings/storage-stats'),
+
+  updateSettings: (updates: AiSettings) =>
+    fetchJson<AiSettings>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
+
+  getLocalAiModels: (ollamaUrl?: string) => {
+    const query = ollamaUrl?.trim() ? `?url=${encodeURIComponent(ollamaUrl.trim())}` : '';
+    return fetchJson<{ models: string[]; error?: string }>(`/ai/local-models${query}`);
+  },
+
+  testAiConnection: () =>
+    fetchJson<{ ok: true; provider: string; model: string; message: string }>('/ai/test'),
+
+  suggestDocumentMetadataWithAi: (id: string) =>
+    fetchJson<AiMetadataSuggestion>(`/ai/documents/${id}/suggest-metadata`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  bulkSuggestMetadataWithAi: (ids: string[]) =>
+    fetchJson<{ results: Array<{ id: string; success: boolean; suggestion?: AiMetadataSuggestion; error?: string }> }>('/ai/bulk-suggest-metadata', {
+      method: 'POST',
+      body: JSON.stringify({ documentIds: ids }),
+    }),
+
+  downloadDocument: async (id: string, filename: string) => {
+    const res = await fetch(`${BASE}/export/download/${id}`);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  exportBatchDocuments: async (ids: string[]) => {
+    const res = await fetch(`${BASE}/export/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vaulty-export-${new Date().toISOString().split('T')[0]}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  exportCsvIndex: async () => {
+    const res = await fetch(`${BASE}/export/csv`);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vaulty-index-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  getFilterPresets: () =>
+    fetchJson<FilterPreset[]>('/filter-presets'),
+
+  saveFilterPreset: (preset: FilterPreset) =>
+    fetchJson<{ id: number; name: string }>('/filter-presets', {
+      method: 'POST',
+      body: JSON.stringify(preset),
+    }),
+
+  deleteFilterPreset: (id: number) =>
+    fetchJson<{ success: boolean }>(`/filter-presets/${id}`, { method: 'DELETE' }),
+};

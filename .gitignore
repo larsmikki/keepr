@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-server/
+*.tsbuildinfo
+
+# Vault data — documents, uploads, databases (never commit personal data)
+vault/
+data/
+temp/
+*.db
+
+# Env / secrets
+.env
+.env.*
+*.log
+
+# Claude AI files
+.claude/
+.codex
+
+# Local tooling batch files
+*.bat
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/

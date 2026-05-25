@@ -1,0 +1,1 @@
+ALTER TABLE documents ADD COLUMN favorite INTEGER DEFAULT 0;

@@ -1,0 +1,41 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Vaulty keeps the app brand static across themes. Individual themes still
+   update --theme-accent for active states and swatches. */
+:root {
+  --brand-gradient: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  .dark {
+    color-scheme: dark;
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+}
+
+/* Toast slide-in (used by ui/Toast.tsx). */
+@keyframes toast-slide-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.toast-slide-in { animation: toast-slide-in 200ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .card-hover:hover { transform: none; }
+}

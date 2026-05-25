@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="vaulty">
+  <defs>
+    <linearGradient id="bg-vaulty" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#14b8a6"></stop>
+      <stop offset="100%" stop-color="#0f766e"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14.4" fill="url(#bg-vaulty)"></rect>
+  <g color="#ffffff" transform="translate(6.399999999999999 6.399999999999999) scale(0.8)">
+    <g fill="currentColor" stroke="none">
+    <rect x="14" y="14" width="10" height="10" rx="2"></rect>
+    <rect x="27" y="14" width="10" height="10" rx="2"></rect>
+    <rect x="40" y="14" width="10" height="10" rx="2"></rect>
+    <rect x="14" y="27" width="10" height="10" rx="2"></rect>
+    <rect x="27" y="27" width="10" height="10" rx="2"></rect>
+    <rect x="40" y="27" width="10" height="10" rx="2"></rect>
+    <rect x="14" y="40" width="10" height="10" rx="2"></rect>
+    <rect x="27" y="40" width="10" height="10" rx="2"></rect>
+    <rect x="40" y="40" width="10" height="10" rx="2"></rect>
+  </g>
+  </g>
+</svg>
