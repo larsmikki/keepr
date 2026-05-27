@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button, Input, Modal, Select, Textarea, useToast } from '@/components/ui';
 import { api } from '@/api';
@@ -20,18 +20,12 @@ export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, ini
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
-    title: '',
+    title: initialFile ? initialFile.name.replace(/\.[^/.]+$/, '') : '',
     description: '',
     category: 'Other',
     documentType: '',
     documentDate: new Date().toISOString().split('T')[0],
   });
-
-  useEffect(() => {
-    if (initialFile) {
-      fetchSuggestions(initialFile.name);
-    }
-  }, []);
 
   const fetchSuggestions = async (filename: string) => {
     setLoadingSuggestions(true);

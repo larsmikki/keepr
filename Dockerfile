@@ -7,6 +7,7 @@ COPY server/package.json server/
 COPY client/package.json client/
 RUN npm ci
 
+COPY tsconfig.base.json ./
 COPY server/ server/
 COPY client/ client/
 RUN npm run build -w client

@@ -1,6 +1,5 @@
 import express from 'express';
 import db from '../db/database.js';
-import path from 'path';
 import fs from 'fs';
 import JSZip from 'jszip';
 

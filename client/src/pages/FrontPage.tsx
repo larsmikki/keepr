@@ -7,6 +7,7 @@ import { UploadModal } from '@/components/UploadModal';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api';
 import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
+import { useQuery } from '@tanstack/react-query';
 
 const PlusIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -56,31 +57,25 @@ export const FrontPage: React.FC = () => {
   const { recentlyViewed, clearRecentlyViewed } = useRecentlyViewed();
   const [search, setSearch] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const [missingDocs, setMissingDocs] = useState<{ id: string; title: string; filePath: string }[]>([]);
-  const [duplicateGroups, setDuplicateGroups] = useState<Record<string, any[]>>({});
-  const [activityData, setActivityData] = useState<Array<{ month: string; count: number; totalSize: number }>>([]);
+  const { data: dashboardSignals, refetch: refreshDashboardSignals } = useQuery({
+    queryKey: ['vault-dashboard-signals'],
+    queryFn: async () => {
+      const [missing, duplicates, activity] = await Promise.allSettled([
+        api.checkMissingDocuments(),
+        api.getDuplicates(),
+        api.getDocumentActivity(12),
+      ]);
 
-  const refreshDashboardSignals = React.useCallback(async () => {
-    const [missing, duplicates, activity] = await Promise.allSettled([
-      api.checkMissingDocuments(),
-      api.getDuplicates(),
-      api.getDocumentActivity(12),
-    ]);
-
-    if (missing.status === 'fulfilled' && missing.value?.missing) {
-      setMissingDocs(missing.value.missing);
-    }
-    if (duplicates.status === 'fulfilled') {
-      setDuplicateGroups(duplicates.value);
-    }
-    if (activity.status === 'fulfilled') {
-      setActivityData(activity.value);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    refreshDashboardSignals();
-  }, [refreshDashboardSignals]);
+      return {
+        missingDocs: missing.status === 'fulfilled' && missing.value?.missing ? missing.value.missing : [],
+        duplicateGroups: duplicates.status === 'fulfilled' ? duplicates.value : {},
+        activityData: activity.status === 'fulfilled' ? activity.value : [],
+      };
+    },
+  });
+  const missingDocs = dashboardSignals?.missingDocs ?? [];
+  const duplicateGroups = dashboardSignals?.duplicateGroups ?? {};
+  const activityData = dashboardSignals?.activityData ?? [];
 
   const stats = useMemo(() => {
     return {

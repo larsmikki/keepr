@@ -52,7 +52,7 @@ router.patch('/:id', async (req, res) => {
 
     if (sidecarPath) {
       const fs = await import('fs/promises');
-      let sidecar = JSON.parse(await fs.readFile(sidecarPath, 'utf8'));
+      const sidecar = JSON.parse(await fs.readFile(sidecarPath, 'utf8'));
 
       filteredUpdates.forEach(field => {
         sidecar[field] = updates[field];

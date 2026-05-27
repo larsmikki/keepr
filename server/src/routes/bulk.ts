@@ -77,7 +77,7 @@ router.patch('/bulk', async (req, res) => {
     const fs = await import('fs/promises');
     for (const doc of docs) {
       if (doc.sidecarPath) {
-        let sidecar = JSON.parse(await fs.readFile(doc.sidecarPath, 'utf8'));
+        const sidecar = JSON.parse(await fs.readFile(doc.sidecarPath, 'utf8'));
         filteredUpdates.forEach(field => {
           sidecar[field] = updates[field];
         });

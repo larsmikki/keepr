@@ -96,7 +96,7 @@ router.get('/storage-stats', (_req, res) => {
         .sort((a, b) => b.size - a.size),
       diskUsage,
     });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to get storage stats' });
   }
 });

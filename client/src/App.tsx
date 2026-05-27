@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { DocumentsProvider } from '@/contexts/DocumentsContext';
+import { DocumentsProvider } from '@/contexts/DocumentsProvider';
 import { ToastProvider } from '@/components/ui';
 import Layout from '@/components/Layout';
 import { FrontPage } from '@/pages/FrontPage';

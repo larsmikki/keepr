@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface PreviewModalProps {
@@ -18,9 +19,6 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   documentId, title, filename, onClose, documentIds, currentIndex = 0, onNavigate,
 }) => {
   const { theme } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [content, setContent] = useState<string | null>(null);
 
   const hasNext = documentIds && currentIndex < documentIds.length - 1;
   const hasPrev = documentIds && currentIndex > 0;
@@ -43,20 +41,19 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
   const isPdf = ext === 'pdf';
   const isText = ['txt', 'md', 'html', 'json', 'xml', 'csv'].includes(ext);
-
-  useEffect(() => {
-    if (isText && !isImage && !isPdf) {
-      fetch(`/api/preview/${documentId}`)
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to load preview');
-          return res.text();
-        })
-        .then(text => { setContent(text); setLoading(false); })
-        .catch(err => { setError(err.message); setLoading(false); });
-    } else {
-      setLoading(false);
-    }
-  }, [documentId, isText, isImage, isPdf]);
+  const {
+    data: content = null,
+    error,
+    isLoading: loading,
+  } = useQuery({
+    queryKey: ['preview', documentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/preview/${documentId}`);
+      if (!res.ok) throw new Error('Failed to load preview');
+      return res.text();
+    },
+    enabled: isText && !isImage && !isPdf,
+  });
 
   const previewUrl = `/api/preview/${documentId}`;
 
@@ -134,7 +131,7 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center h-64">
-              <div className="font-medium" style={{ color: '#dc2626' }}>{error}</div>
+              <div className="font-medium" style={{ color: '#dc2626' }}>{error instanceof Error ? error.message : 'Failed to load preview'}</div>
             </div>
           ) : isImage ? (
             <img src={previewUrl} alt={title} className="max-w-full max-h-[80vh] mx-auto object-contain" />

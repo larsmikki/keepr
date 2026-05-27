@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api';
 import type { Document, PaginatedResponse } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -9,6 +10,7 @@ import { getFileIcon } from '@/utils/fileUtils';
 import { CATEGORIES, DOCUMENT_TYPES } from '@/constants';
 
 type SortField = 'createdAt' | 'updatedAt' | 'documentDate' | 'title' | 'category' | 'documentType' | 'amount' | 'fileSize';
+const EMPTY_DOCS: Document[] = [];
 
 const TrashIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
@@ -21,9 +23,7 @@ export const DocumentsPage: React.FC = () => {
   const { addToast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [docs, setDocs] = useState<Document[]>([]);
-  const [totalDocs, setTotalDocs] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [category, setCategory] = useState('');
   const [documentType, setDocumentType] = useState('');
@@ -35,34 +35,25 @@ export const DocumentsPage: React.FC = () => {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const loadDocuments = async () => {
-    setLoading(true);
-    try {
-      const result = await api.getDocuments({
-        search: search || undefined,
-        category: category || undefined,
-        documentType: documentType || undefined,
-        sortBy,
-        sortDir,
-      });
-      if (Array.isArray(result)) {
-        setDocs(result);
-        setTotalDocs(result.length);
-      } else {
-        const paged = result as PaginatedResponse<Document>;
-        setDocs(paged.documents);
-        setTotalDocs(paged.total);
-      }
-    } catch (err) {
-      addToast('Failed to load documents: ' + err, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadDocuments();
-  }, [search, category, documentType, sortBy, sortDir]);
+  const documentParams = useMemo(() => ({
+    search: search || undefined,
+    category: category || undefined,
+    documentType: documentType || undefined,
+    sortBy,
+    sortDir,
+  }), [category, documentType, search, sortBy, sortDir]);
+  const { data: documentData, isLoading: loading } = useQuery({
+    queryKey: ['documents-page', documentParams],
+    queryFn: async () => {
+      const result = await api.getDocuments(documentParams);
+      if (Array.isArray(result)) return { docs: result, total: result.length };
+      const paged = result as PaginatedResponse<Document>;
+      return { docs: paged.documents, total: paged.total };
+    },
+  });
+  const docs = documentData?.docs ?? EMPTY_DOCS;
+  const totalDocs = documentData?.total ?? 0;
+  const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['documents-page'] });
 
   const visibleIds = useMemo(() => docs.map(doc => doc.id), [docs]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
@@ -103,7 +94,7 @@ export const DocumentsPage: React.FC = () => {
         next.delete(deleteId);
         return next;
       });
-      loadDocuments();
+      void refreshDocuments();
     } catch (err) {
       addToast('Delete failed: ' + err, 'error');
     }
@@ -117,13 +108,13 @@ export const DocumentsPage: React.FC = () => {
       addToast(`${ids.length} document${ids.length === 1 ? '' : 's'} deleted`, 'success');
       setSelectedIds(new Set());
       setBulkDeleteOpen(false);
-      loadDocuments();
+      void refreshDocuments();
     } catch (err) {
       addToast('Bulk delete failed: ' + err, 'error');
     }
   };
 
-  const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+  const sortButton = (field: SortField, label: React.ReactNode) => (
     <button
       className="font-semibold hover:opacity-75"
       style={{ color: sortBy === field ? theme.accent : theme.text }}
@@ -132,7 +123,7 @@ export const DocumentsPage: React.FC = () => {
         setSortDir(sortBy === field && sortDir === 'asc' ? 'desc' : 'asc');
       }}
     >
-      {children} {sortBy === field ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+      {label} {sortBy === field ? (sortDir === 'asc' ? '↑' : '↓') : ''}
     </button>
   );
 
@@ -196,11 +187,11 @@ export const DocumentsPage: React.FC = () => {
                     onChange={toggleAllVisible}
                   />
                 </th>
-                <th className="px-4 py-3"><SortButton field="title">Title</SortButton></th>
-                <th className="px-4 py-3"><SortButton field="category">Category</SortButton></th>
-                <th className="px-4 py-3"><SortButton field="documentType">Type</SortButton></th>
-                <th className="px-4 py-3"><SortButton field="documentDate">Date</SortButton></th>
-                <th className="px-4 py-3"><SortButton field="fileSize">Size</SortButton></th>
+                <th className="px-4 py-3">{sortButton('title', 'Title')}</th>
+                <th className="px-4 py-3">{sortButton('category', 'Category')}</th>
+                <th className="px-4 py-3">{sortButton('documentType', 'Type')}</th>
+                <th className="px-4 py-3">{sortButton('documentDate', 'Date')}</th>
+                <th className="px-4 py-3">{sortButton('fileSize', 'Size')}</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
@@ -284,7 +275,7 @@ export const DocumentsPage: React.FC = () => {
           onClose={() => setShowUpload(false)}
           onSuccess={() => {
             setShowUpload(false);
-            loadDocuments();
+            void refreshDocuments();
           }}
         />
       )}

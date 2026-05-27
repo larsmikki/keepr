@@ -1,4 +1,3 @@
-import path from 'path';
 
 export const generateSafeFilename = (doc: {
   title?: string;

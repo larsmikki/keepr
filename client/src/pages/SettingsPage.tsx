@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button, Input, Select, Surface, useToast } from '@/components/ui';
 import ThemePicker from '@/components/ThemePicker';
@@ -37,14 +38,10 @@ export const SettingsPage: React.FC = () => {
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [detectingModels, setDetectingModels] = useState(false);
   const [ollamaError, setOllamaError] = useState<string | null>(null);
-  const [storageStats, setStorageStats] = useState<{
-    totalDocuments: number;
-    totalSize: number;
-    byCategory: Array<{ category: string; count: number; size: number }>;
-    byType: Array<{ documentType: string; count: number; size: number }>;
-    diskUsage: { used: number; free: number; total: number };
-  } | null>(null);
-  const [loadingStats, setLoadingStats] = useState(false);
+  const { data: storageStats = null, isLoading: loadingStats } = useQuery({
+    queryKey: ['vault-storage-stats'],
+    queryFn: api.getStorageStats,
+  });
 
   const apiKeyIsConfigured = settings.ai_api_key === '***';
 
@@ -65,58 +62,12 @@ export const SettingsPage: React.FC = () => {
     };
   };
 
-  useEffect(() => {
-    api.getConfig().then(cfg => setVaultPath(cfg.vaultRoot)).catch(() => {});
-    api.getSettings().then((data: Settings) => {
-      setSettings(prev => ({ ...prev, ...data }));
-      if (data.folder_organization) setFolderOrg(data.folder_organization);
-      if (data.ai_provider === 'ollama') {
-        void detectLocalModels({
-          silent: true,
-          ollamaUrl: data.ai_ollama_url,
-          model: data.ai_model,
-        });
-      }
-    }).catch(() => {});
-    setLoadingStats(true);
-    api.getStorageStats().then(setStorageStats).catch(() => {}).finally(() => setLoadingStats(false));
-  }, []);
-
-  // Auto-save non-credential settings (folder org, provider, model, ollama url).
   const autoSave = async (patch: Partial<AiSettings & { folder_organization: FolderOrg }>) => {
     try {
       const saved = await api.updateSettings(patch as AiSettings);
       setSettings(prev => ({ ...prev, ...saved }));
     } catch (err: any) {
       addToast('Failed to save: ' + err.message, 'error');
-    }
-  };
-
-  const updateFolderOrg = (next: FolderOrg) => {
-    setFolderOrg(next);
-    autoSave({ folder_organization: next });
-  };
-
-  const updateProvider = (provider: 'openai' | 'ollama') => {
-    const next = { ai_provider: provider, ai_model: settings.ai_model || (provider === 'ollama' ? '' : 'gpt-4o-mini') };
-    setSettings(prev => ({ ...prev, ...next }));
-    autoSave(next);
-    if (provider === 'ollama') {
-      void detectLocalModels({ silent: true });
-    }
-  };
-
-  // Explicit save for credentials (API key + base URL + model).
-  const saveCredentials = async () => {
-    setCredentialsSaving(true);
-    try {
-      const saved = await api.updateSettings(currentAiSettings());
-      setSettings(prev => ({ ...prev, ...saved }));
-      addToast('Credentials saved', 'success');
-    } catch (err: any) {
-      addToast('Save failed: ' + err.message, 'error');
-    } finally {
-      setCredentialsSaving(false);
     }
   };
 
@@ -149,6 +100,43 @@ export const SettingsPage: React.FC = () => {
       if (!opts.silent) addToast('Error: ' + err.message, 'error');
     } finally {
       setDetectingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    api.getConfig().then(cfg => setVaultPath(cfg.vaultRoot)).catch(() => {});
+    api.getSettings().then((data: Settings) => {
+      setSettings(prev => ({ ...prev, ...data }));
+      if (data.folder_organization) setFolderOrg(data.folder_organization);
+    }).catch(() => {});
+  }, []);
+
+  // Auto-save non-credential settings (folder org, provider, model, ollama url).
+  const updateFolderOrg = (next: FolderOrg) => {
+    setFolderOrg(next);
+    autoSave({ folder_organization: next });
+  };
+
+  const updateProvider = (provider: 'openai' | 'ollama') => {
+    const next = { ai_provider: provider, ai_model: settings.ai_model || (provider === 'ollama' ? '' : 'gpt-4o-mini') };
+    setSettings(prev => ({ ...prev, ...next }));
+    autoSave(next);
+    if (provider === 'ollama') {
+      void detectLocalModels({ silent: true });
+    }
+  };
+
+  // Explicit save for credentials (API key + base URL + model).
+  const saveCredentials = async () => {
+    setCredentialsSaving(true);
+    try {
+      const saved = await api.updateSettings(currentAiSettings());
+      setSettings(prev => ({ ...prev, ...saved }));
+      addToast('Credentials saved', 'success');
+    } catch (err: any) {
+      addToast('Save failed: ' + err.message, 'error');
+    } finally {
+      setCredentialsSaving(false);
     }
   };
 

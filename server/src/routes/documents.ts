@@ -3,7 +3,6 @@ import multer from 'multer';
 import db, { saveDb } from '../db/database.js';
 import path from 'path';
 import fs from 'fs/promises';
-import crypto from 'crypto';
 import { saveDocument } from '../services/documentService.js';
 
 const router = express.Router();

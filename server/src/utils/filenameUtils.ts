@@ -34,7 +34,6 @@ export interface MetadataSuggestion {
 export function suggestMetadataFromFilename(filename: string): MetadataSuggestion {
   const suggestions: MetadataSuggestion = {};
 
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
   const filenameWithoutExt = filename.replace(/\.[^/.]+$/, '');
   const filenameLower = filenameWithoutExt.toLowerCase();
 

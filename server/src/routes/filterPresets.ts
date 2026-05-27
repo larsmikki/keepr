@@ -49,7 +49,7 @@ router.get('/', (_req, res) => {
       sortDir: p.sortDir || undefined,
       createdAt: p.createdAt,
     })));
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch filter presets' });
   }
 });
@@ -99,7 +99,7 @@ router.post('/', (req, res) => {
 
     const saved = db.prepare('SELECT * FROM filter_presets WHERE name = ?').get(preset.name) as FilterPreset;
     res.status(201).json({ id: saved.id, name: saved.name });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to save filter preset' });
   }
 });
@@ -118,7 +118,7 @@ router.delete('/:id', (req, res) => {
 
     saveDb();
     res.json({ success: true });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to delete filter preset' });
   }
 });

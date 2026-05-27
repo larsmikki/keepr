@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button, Input, Select, Surface, Textarea, useToast } from '@/components/ui';
 import { api } from '@/api';
@@ -10,12 +11,36 @@ import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 
 const StarIcon = ({ filled }: { filled: boolean }) => (
   <svg className="h-5 w-5" viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-    <path strokeLinejoin="round" d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+    <path strokeLinejoin="round" d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
   </svg>
 );
 
 const FIELDS = ['tags'] as const;
 type TagField = typeof FIELDS[number];
+
+type EditForm = {
+  title: string;
+  category: string;
+  documentType: string;
+  description: string;
+  notes: string;
+  documentDate: string;
+  amount: number | string;
+  currency: string;
+  tags: string[];
+};
+
+const createEditForm = (document: Document): EditForm => ({
+  title: document.title,
+  category: document.category || 'Other',
+  documentType: document.documentType || '',
+  description: document.description || '',
+  notes: document.notes || '',
+  documentDate: document.documentDate || '',
+  amount: document.amount ?? '',
+  currency: document.currency || 'DKK',
+  tags: JSON.parse(document.tags || '[]'),
+});
 
 export const DocumentDetailPage: React.FC = () => {
   const { id } = useParams();
@@ -23,39 +48,34 @@ export const DocumentDetailPage: React.FC = () => {
   const { theme } = useTheme();
   const { addToast } = useToast();
   const { addRecentlyViewed } = useRecentlyViewed();
-  const [doc, setDoc] = useState<Document | { error: string } | null>(null);
+  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState<any>({});
+  const [editForm, setEditForm] = useState<Partial<EditForm>>({});
   const [pendingTag, setPendingTag] = useState<{ type: TagField; value: string } | null>(null);
+  const documentQueryKey = ['document-detail', id] as const;
+  const { data: doc = null, error } = useQuery({
+    queryKey: documentQueryKey,
+    queryFn: () => api.getDocument(id!),
+    enabled: !!id,
+  });
+  const loadedEditForm = useMemo(() => doc ? createEditForm(doc) : null, [doc]);
+  const form = { ...(loadedEditForm ?? {}), ...editForm } as EditForm;
 
-  const fetchDoc = async () => {
-    try {
-      const data = await api.getDocument(id!);
-      setDoc(data);
-      addRecentlyViewed({ id: data.id, title: data.title, storedFilename: data.storedFilename, category: data.category });
-      setEditForm({
-        title: data.title,
-        category: data.category || 'Other',
-        documentType: data.documentType || '',
-        description: data.description || '',
-        notes: data.notes || '',
-        documentDate: data.documentDate || '',
-        amount: data.amount ?? '',
-        currency: data.currency || 'DKK',
-        tags: JSON.parse(data.tags || '[]'),
-      });
-    } catch (err: any) {
-      console.error('Failed to fetch document', err);
-      setDoc({ error: err.message || 'Failed to load document' });
-    }
-  };
-
-  useEffect(() => { fetchDoc(); }, [id]);
+  useEffect(() => {
+    if (!doc) return;
+    addRecentlyViewed({ id: doc.id, title: doc.title, storedFilename: doc.storedFilename, category: doc.category });
+  }, [addRecentlyViewed, doc]);
 
   const handleSave = async () => {
     try {
-      await api.updateDocumentMetadata(id!, editForm);
-      await fetchDoc();
+      const payload: Partial<Document> = {
+        ...form,
+        amount: form.amount === '' ? undefined : Number(form.amount),
+        tags: JSON.stringify(form.tags ?? []),
+      };
+      await api.updateDocumentMetadata(id!, payload);
+      await queryClient.invalidateQueries({ queryKey: documentQueryKey });
+      setEditForm({});
       setIsEditing(false);
       addToast('Saved', 'success');
     } catch (err: any) {
@@ -64,11 +84,11 @@ export const DocumentDetailPage: React.FC = () => {
   };
 
   const toggleFavorite = async () => {
-    if (!document) return;
+    if (!doc) return;
     try {
-      const next = document.favorite ? 0 : 1;
+      const next = doc.favorite ? 0 : 1;
       await api.updateDocumentMetadata(id!, { favorite: next });
-      setDoc({ ...document, favorite: next });
+      queryClient.setQueryData<Document>(documentQueryKey, { ...doc, favorite: next });
     } catch (err) {
       console.error('Failed to toggle favorite', err);
     }
@@ -79,32 +99,32 @@ export const DocumentDetailPage: React.FC = () => {
   const commitTag = () => {
     if (pendingTag && pendingTag.value.trim()) {
       setEditForm({
-        ...editForm,
-        [pendingTag.type]: [...(editForm[pendingTag.type] || []), pendingTag.value.trim()],
+        ...form,
+        [pendingTag.type]: [...(form[pendingTag.type] || []), pendingTag.value.trim()],
       });
     }
     setPendingTag(null);
   };
 
   const removeTag = (type: TagField, index: number) => {
-    const list = [...editForm[type]];
+    const list = [...form[type]];
     list.splice(index, 1);
-    setEditForm({ ...editForm, [type]: list });
+    setEditForm({ ...form, [type]: list });
   };
 
-  if (!doc) return <div className="p-4 text-text">Loading...</div>;
+  if (!doc && !error) return <div className="p-4 text-text">Loading...</div>;
 
-  if ('error' in doc) return (
+  if (error || !doc) return (
     <div className="max-w-4xl mx-auto w-full p-8 text-center">
       <h2 className="text-xl font-bold mb-2 text-text">Document not found</h2>
-      <p className="text-text2">{(doc as { error: string }).error}</p>
+      <p className="text-text2">{error instanceof Error ? error.message : 'Failed to load document'}</p>
       <div className="mt-4">
         <Button variant="primary" onClick={() => navigate('/documents')}>Back to documents</Button>
       </div>
     </div>
   );
 
-  const document = doc as Document;
+  const document = doc;
 
   return (
     <div className="max-w-4xl mx-auto w-full">
@@ -114,8 +134,8 @@ export const DocumentDetailPage: React.FC = () => {
             {isEditing ? (
               <Input
                 className="!py-1.5"
-                value={editForm.title}
-                onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                value={form.title}
+                onChange={e => setEditForm({ ...form, title: e.target.value })}
               />
             ) : document.title}
           </h1>
@@ -179,14 +199,14 @@ export const DocumentDetailPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
               <DetailField label="Category">
                 {isEditing ? (
-                  <Select value={editForm.category} onChange={e => setEditForm({ ...editForm, category: e.target.value })}>
+                  <Select value={form.category} onChange={e => setEditForm({ ...form, category: e.target.value })}>
                     {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </Select>
                 ) : <span className="text-text">{document.category || 'Uncategorized'}</span>}
               </DetailField>
               <DetailField label="Document type">
                 {isEditing ? (
-                  <Select value={editForm.documentType} onChange={e => setEditForm({ ...editForm, documentType: e.target.value })}>
+                  <Select value={form.documentType} onChange={e => setEditForm({ ...form, documentType: e.target.value })}>
                     <option value="">Not set</option>
                     {DOCUMENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                   </Select>
@@ -194,17 +214,17 @@ export const DocumentDetailPage: React.FC = () => {
               </DetailField>
               <DetailField label="Document date">
                 {isEditing ? (
-                  <Input type="date" value={editForm.documentDate} onChange={e => setEditForm({ ...editForm, documentDate: e.target.value })} />
+                  <Input type="date" value={form.documentDate} onChange={e => setEditForm({ ...form, documentDate: e.target.value })} />
                 ) : <span className="text-text">{document.documentDate || '-'}</span>}
               </DetailField>
               <DetailField label="Amount">
                 {isEditing ? (
-                  <Input type="number" value={editForm.amount} onChange={e => setEditForm({ ...editForm, amount: e.target.value })} placeholder="0.00" />
+                  <Input type="number" value={form.amount} onChange={e => setEditForm({ ...form, amount: e.target.value })} placeholder="0.00" />
                 ) : <span className="text-text">{document.amount != null ? `${document.amount} ${document.currency || 'DKK'}` : '-'}</span>}
               </DetailField>
               <DetailField label="Currency">
                 {isEditing ? (
-                  <Select value={editForm.currency} onChange={e => setEditForm({ ...editForm, currency: e.target.value })}>
+                  <Select value={form.currency} onChange={e => setEditForm({ ...form, currency: e.target.value })}>
                     {['DKK', 'EUR', 'USD', 'GBP', 'SEK', 'NOK'].map(c => <option key={c} value={c}>{c}</option>)}
                   </Select>
                 ) : <span className="text-text">{document.currency || 'DKK'}</span>}
@@ -213,7 +233,7 @@ export const DocumentDetailPage: React.FC = () => {
               <div className="col-span-2 space-y-4">
                 {FIELDS.map(field => {
                   const items: string[] = isEditing
-                    ? editForm[field] || []
+                    ? form[field] || []
                     : JSON.parse((document[field as keyof Document] as string) || '[]');
                   const labels: Record<TagField, string> = { tags: 'Tags' };
                   return (
@@ -268,8 +288,8 @@ export const DocumentDetailPage: React.FC = () => {
                 {isEditing ? (
                   <Textarea
                     rows={3}
-                    value={editForm.description}
-                    onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                    value={form.description}
+                    onChange={e => setEditForm({ ...form, description: e.target.value })}
                   />
                 ) : <span className="text-text">{document.description || 'No description provided.'}</span>}
               </div>
@@ -279,8 +299,8 @@ export const DocumentDetailPage: React.FC = () => {
                 {isEditing ? (
                   <Textarea
                     rows={3}
-                    value={editForm.notes}
-                    onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
+                    value={form.notes}
+                    onChange={e => setEditForm({ ...form, notes: e.target.value })}
                   />
                 ) : <span className="text-text">{document.notes || 'No notes provided.'}</span>}
               </div>
