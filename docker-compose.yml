@@ -1,13 +1,13 @@
 services:
-  vaulty:
-    image: larsmikki/vaulty:latest
-    container_name: vaulty
+  document-vault:
+    image: larsmikki/document-vault:latest
+    container_name: document-vault
     ports:
       - "3110:3110"
     environment:
       - PORT=3110
     volumes:
-      - vaulty_data:/app/vault
+      - /volume2/docker/document-vault:/app/vault
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3110/api/health"]
@@ -15,6 +15,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 90s
-
-volumes:
-  vaulty_data:

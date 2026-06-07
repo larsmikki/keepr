@@ -9,21 +9,14 @@ const shortcuts = [
   { keys: ['?'], description: 'Show keyboard shortcuts' },
   { keys: ['/'], description: 'Focus search input' },
   { keys: ['n'], description: 'Open upload modal' },
-  { keys: ['f'], description: 'Toggle favorites filter' },
-  { keys: ['e'], description: 'Toggle archived filter' },
-  { keys: ['d'], description: 'Toggle duplicates filter' },
-  { keys: ['←'], description: 'Previous page' },
-  { keys: ['→'], description: 'Next page' },
+  { keys: ['f'], description: 'Toggle favorite (on document page)' },
   { keys: ['Esc'], description: 'Clear filters / Close modal' },
-  { keys: ['Enter'], description: 'Open selected document' },
-  { keys: ['a'], description: 'Select all documents (in list)' },
-  { keys: ['Delete'], description: 'Delete selected documents' },
-  { keys: ['s'], description: 'Sort by column (in table header)' },
 ];
 
 const navigationShortcuts = [
   { keys: ['g then d'], description: 'Go to Documents' },
   { keys: ['g then h'], description: 'Go to Dashboard (Home)' },
+  { keys: ['g then f'], description: 'Go to Favorites' },
   { keys: ['g then i'], description: 'Go to Inbox' },
   { keys: ['g then s'], description: 'Go to Settings' },
 ];
@@ -43,19 +36,7 @@ export default function KeyboardShortcuts({ isOpen, onClose }: KeyboardShortcuts
         <div>
           <h3 className="text-xs uppercase tracking-wider font-semibold text-text2 mb-3">General</h3>
           <div className="space-y-2">
-            {shortcuts.slice(0, 4).map((s, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-sm text-text">{s.description}</span>
-                <Kbd>{s.keys[0]}</Kbd>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-xs uppercase tracking-wider font-semibold text-text2 mb-3">Filters &amp; navigation</h3>
-          <div className="space-y-2">
-            {shortcuts.slice(4).map((s, i) => (
+            {shortcuts.map((s, i) => (
               <div key={i} className="flex items-center justify-between">
                 <span className="text-sm text-text">{s.description}</span>
                 <Kbd>{s.keys[0]}</Kbd>

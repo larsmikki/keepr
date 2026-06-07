@@ -2,10 +2,6 @@ export interface Document {
   id: string;
   title: string;
   description?: string;
-  category?: string;
-  documentType?: string;
-  amount?: number;
-  currency?: string;
   documentDate?: string;
   tags?: string;
   notes?: string;
@@ -17,8 +13,28 @@ export interface Document {
   fileSize?: number;
   favorite?: number;
   archived?: number;
+  folder?: string;
+  fileModifiedDate?: string;
+  extractedText?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface DocumentHistoryEntry {
+  id: number;
+  document_id: string;
+  field: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string;
+}
+
+export interface LinkedDocument {
+  id: string;
+  title: string;
+  storedFilename?: string;
+  documentDate?: string;
+  fileSize?: number;
 }
 
 export interface RescanResult {
@@ -28,6 +44,7 @@ export interface RescanResult {
   checksumMismatches: string[];
   sidecarConflicts: string[];
   deletedFromDb: string[];
+  importedNewFiles: number;
 }
 
 export interface ImportResult {
@@ -45,28 +62,26 @@ export interface PaginatedResponse<T> {
 
 export interface MetadataSuggestion {
   title?: string;
-  category?: string;
-  documentType?: string;
   documentDate?: string;
-  amount?: number;
-  currency?: string;
 }
 
 export interface AiSettings {
-  ai_provider?: 'openai' | 'ollama';
-  ai_model?: string;
+  ai_provider?: 'none' | 'openai' | 'ollama';
+  ai_openai_model?: string;
+  ai_ollama_model?: string;
   ai_api_key?: string;
   ai_base_url?: string;
   ai_ollama_url?: string;
+  ai_temperature?: string;
 }
 
 export interface AiMetadataSuggestion {
-  category: string;
-  documentType: string;
+  title?: string;
+  tags?: string[];
   confidence?: number;
   reason?: string;
 }
 
 export interface Settings extends AiSettings {
-  folder_organization?: 'year-month' | 'category-year' | 'year-category' | 'type-year' | 'flat';
+  folder_organization?: 'year-month' | 'flat';
 }

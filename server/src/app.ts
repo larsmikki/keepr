@@ -16,6 +16,8 @@ import exportRoutes from './routes/export.js';
 import aiRoutes from './routes/ai.js';
 import settingsRoutes from './routes/settings.js';
 import filterPresetsRoutes from './routes/filterPresets.js';
+import historyRoutes from './routes/history.js';
+import linksRoutes from './routes/links.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +51,15 @@ export function createApp() {
   app.use('/api/ai', aiRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/filter-presets', filterPresetsRoutes);
+  app.use('/api/history', historyRoutes);
+  app.use('/api/links', linksRoutes);
+
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[server] Unhandled Express error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
 
   if (isProduction) {
     const clientDist = path.join(__dirname, '../../client/dist');

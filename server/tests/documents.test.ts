@@ -67,8 +67,6 @@ describe('Documents API', () => {
       .attach('file', tempFile)
       .field('metadata', JSON.stringify({
         title: 'CRUD Test',
-        category: 'Other',
-        documentType: 'Record',
         documentDate: '2026-05-10',
       }));
 
@@ -81,19 +79,18 @@ describe('Documents API', () => {
     const res = await request(app).get(`/api/documents/${docId}`);
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('CRUD Test');
-    expect(res.body.category).toBe('Other');
   });
 
   it('UPDATE: patches metadata', async () => {
     const updateRes = await request(app)
       .patch(`/api/metadata/${docId}`)
-      .send({ title: 'Updated Title', category: 'Finance' });
+      .send({ title: 'Updated Title', notes: 'test note' });
     expect(updateRes.status).toBe(200);
     expect(updateRes.body.success).toBe(true);
 
     const getRes = await request(app).get(`/api/documents/${docId}`);
     expect(getRes.body.title).toBe('Updated Title');
-    expect(getRes.body.category).toBe('Finance');
+    expect(getRes.body.notes).toBe('test note');
   });
 
   it('DELETE: removes the document', async () => {

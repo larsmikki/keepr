@@ -60,9 +60,9 @@ router.post('/import-folder', async (req, res) => {
 
       const title = path.basename(file, ext);
       db.prepare(`
-        INSERT INTO documents (id, title, category, documentType, documentDate, originalFilename, storedFilename, filePath, checksum, fileSize, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `).run(id, title, 'Other', '', '', file, storedFilename, destPath, checksum, fileStat.size);
+        INSERT INTO documents (id, title, documentDate, originalFilename, storedFilename, filePath, checksum, fileSize, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).run(id, title, '', file, storedFilename, destPath, checksum, fileStat.size);
 
       imported++;
     }

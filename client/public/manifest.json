@@ -1,6 +1,6 @@
 {
-  "name": "Vaulty",
-  "short_name": "Vaulty",
+  "name": "Document Vault",
+  "short_name": "Document Vault",
   "description": "Document management app",
   "start_url": "/",
   "display": "standalone",

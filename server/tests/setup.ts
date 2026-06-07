@@ -2,7 +2,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
-const testVault = fs.mkdtempSync(path.join(os.tmpdir(), 'vaulty-test-'));
+const testVault = fs.mkdtempSync(path.join(os.tmpdir(), 'test-data-'));
 process.env.VAULT_ROOT = testVault;
 
 process.on('exit', () => {

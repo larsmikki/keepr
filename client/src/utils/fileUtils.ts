@@ -1,3 +1,12 @@
+export const parseTags = (raw: string | null | undefined): string[] => {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export const getFileIcon = (storedFilename?: string): string => {
   const ext = storedFilename?.split('.').pop()?.toLowerCase();
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext || '')) return '🖼️';

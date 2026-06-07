@@ -7,16 +7,11 @@ interface FilterPreset {
   id?: number;
   name: string;
   search?: string;
-  category?: string;
-  documentType?: string;
   favorite?: number;
   archived?: number;
   dateFrom?: string;
   dateTo?: string;
   tag?: string;
-  amountMin?: number;
-  amountMax?: number;
-  currency?: string;
   fileSizeMin?: number;
   fileSizeMax?: number;
   noMetadata?: number;
@@ -32,16 +27,11 @@ router.get('/', (_req, res) => {
       id: p.id,
       name: p.name,
       search: p.search || undefined,
-      category: p.category || undefined,
-      documentType: p.documentType || undefined,
       favorite: p.favorite !== undefined && p.favorite !== null ? Boolean(p.favorite) : undefined,
       archived: p.archived !== undefined && p.archived !== null ? Boolean(p.archived) : undefined,
       dateFrom: p.dateFrom || undefined,
       dateTo: p.dateTo || undefined,
       tag: p.tag || undefined,
-      amountMin: p.amountMin || undefined,
-      amountMax: p.amountMax || undefined,
-      currency: p.currency || undefined,
       fileSizeMin: p.fileSizeMin || undefined,
       fileSizeMax: p.fileSizeMax || undefined,
       noMetadata: p.noMetadata !== undefined && p.noMetadata !== null ? Boolean(p.noMetadata) : undefined,
@@ -68,26 +58,21 @@ router.post('/', (req, res) => {
 
     const stmt = db.prepare(`
       INSERT INTO filter_presets (
-        name, search, category, documentType, favorite, archived,
-        dateFrom, dateTo, tag, amountMin, amountMax, currency,
+        name, search, favorite, archived,
+        dateFrom, dateTo, tag,
         fileSizeMin, fileSizeMax, noMetadata,
         sortBy, sortDir
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
       preset.name,
       preset.search || null,
-      preset.category || null,
-      preset.documentType || null,
       preset.favorite !== undefined ? (preset.favorite ? 1 : 0) : null,
       preset.archived !== undefined ? (preset.archived ? 1 : 0) : null,
       preset.dateFrom || null,
       preset.dateTo || null,
       preset.tag || null,
-      preset.amountMin || null,
-      preset.amountMax || null,
-      preset.currency || null,
       preset.fileSizeMin || null,
       preset.fileSizeMax || null,
       preset.noMetadata !== undefined ? (preset.noMetadata ? 1 : 0) : null,

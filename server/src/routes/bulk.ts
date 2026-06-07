@@ -1,29 +1,47 @@
 import express from 'express';
+import { z } from 'zod';
 import db from '../db/database.js';
 import { saveDb } from '../db/database.js';
 import fs from 'fs/promises';
+import { buildSidecar } from '../utils/sidecarUtils.js';
+import { syncDocumentFts } from '../services/documentService.js';
 
 const router = express.Router();
 
+const BulkIdsSchema = z.object({
+  ids: z.array(z.string()).min(1),
+});
+
+const BulkUpdateSchema = z.object({
+  ids: z.array(z.string()).min(1),
+  updates: z.object({
+    title:        z.string().min(1).max(500).optional(),
+    description:  z.string().max(5000).optional(),
+    documentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    tags:         z.union([z.string().max(2000), z.array(z.string().max(100))]).optional(),
+    notes:        z.string().max(10000).optional(),
+    folder:       z.string().max(200).optional().nullable(),
+  }).strict(),
+});
+
 router.delete('/bulk', async (req, res) => {
   try {
-    const { ids } = req.body;
+    const parsed = BulkIdsSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'A list of document IDs is required' });
+    const { ids } = parsed.data;
 
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'A list of document IDs is required' });
-    }
-
-    const placeholders = new Array(ids.length).fill('?');
-    const docs = db.prepare(`SELECT id, filePath, sidecarPath FROM documents WHERE id IN (${placeholders.join(',')})`).all(ids) as any[];
+    const placeholders = ids.map(() => '?').join(',');
+    const docs = db.prepare(
+      `SELECT id, filePath, sidecarPath FROM documents WHERE id IN (${placeholders})`
+    ).all(ids) as any[];
 
     for (const doc of docs) {
-      try {
-        await fs.unlink(doc.filePath).catch(() => {});
-        await fs.unlink(doc.sidecarPath).catch(() => {});
-      } catch {}
+      try { await fs.unlink(doc.filePath).catch(() => {}); } catch {}
+      try { await fs.unlink(doc.sidecarPath).catch(() => {}); } catch {}
     }
 
-    db.prepare(`DELETE FROM documents WHERE id IN (${placeholders.join(',')})`).run(ids);
+    db.prepare(`DELETE FROM documents WHERE id IN (${placeholders})`).run(ids);
+    try { db.prepare(`DELETE FROM documents_fts WHERE document_id IN (${placeholders})`).run(ids); } catch {}
     saveDb();
 
     res.json({ success: true, deletedCount: ids.length });
@@ -34,58 +52,44 @@ router.delete('/bulk', async (req, res) => {
 
 router.patch('/bulk', async (req, res) => {
   try {
-    const { ids, updates } = req.body;
-
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'A list of document IDs is required' });
+    const parsed = BulkUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join('; ') });
     }
+    const { ids, updates } = parsed.data;
 
-    const allowedFields = [
-      'title', 'description', 'category', 'documentType',
-      'amount', 'currency', 'documentDate',
-      'tags', 'notes'
-    ];
+    const allowedFields = ['title', 'description', 'documentDate', 'tags', 'notes', 'folder'];
+    const filteredKeys = Object.keys(updates).filter(k => allowedFields.includes(k));
 
-    const filteredUpdates = Object.keys(updates || {}).filter(key => allowedFields.includes(key));
+    if (filteredKeys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
 
-    if (filteredUpdates.length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
-    }
-
-    const setClause = filteredUpdates.map(field => `${field} = ?`).join(', ');
-    const values = filteredUpdates.map(field => {
-      const val = updates[field];
+    const setClause = filteredKeys.map(f => `${f} = ?`).join(', ');
+    const values = filteredKeys.map(f => {
+      const val = (updates as any)[f];
       return Array.isArray(val) ? JSON.stringify(val) : val;
     });
 
-    const stmt = db.prepare(`UPDATE documents SET ${setClause}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`);
-
-    // Use a transaction for efficiency and atomicity
+    const stmt = db.prepare(
+      `UPDATE documents SET ${setClause}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`
+    );
     const transaction = db.transaction((idsToUpdate: string[]) => {
-      for (const id of idsToUpdate) {
-        stmt.run(...values, id);
-      }
+      for (const id of idsToUpdate) stmt.run(...values, id);
     });
-
     transaction(ids);
 
-    // Update sidecars for all affected documents
-    const docs = db.prepare('SELECT id, sidecarPath FROM documents WHERE id IN (' +
-      new Array(ids.length).fill('?').join(',') +
-      ')').all(ids) as any[];
+    // Sync sidecars
+    const docs = db.prepare(
+      `SELECT * FROM documents WHERE id IN (${ids.map(() => '?').join(',')})`
+    ).all(ids) as any[];
 
-    const fs = await import('fs/promises');
     for (const doc of docs) {
       if (doc.sidecarPath) {
-        const sidecar = JSON.parse(await fs.readFile(doc.sidecarPath, 'utf8'));
-        filteredUpdates.forEach(field => {
-          sidecar[field] = updates[field];
-        });
-        sidecar.updatedAt = new Date().toISOString();
-        await fs.writeFile(doc.sidecarPath, JSON.stringify(sidecar, null, 2));
+        await fs.writeFile(doc.sidecarPath, JSON.stringify(buildSidecar(doc), null, 2));
       }
+      syncDocumentFts(doc.id);
     }
 
+    saveDb();
     res.json({ success: true, updatedCount: ids.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

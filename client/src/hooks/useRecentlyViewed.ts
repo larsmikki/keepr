@@ -4,7 +4,6 @@ interface RecentlyViewedItem {
   id: string;
   title: string;
   storedFilename?: string;
-  category?: string;
   viewedAt: number;
 }
 
@@ -24,7 +23,7 @@ export function useRecentlyViewed() {
     return [];
   });
 
-  const addRecentlyViewed = useCallback((doc: { id: string; title: string; storedFilename?: string; category?: string }) => {
+  const addRecentlyViewed = useCallback((doc: { id: string; title: string; storedFilename?: string }) => {
     setRecentlyViewed(prev => {
       const filtered = prev.filter(item => item.id !== doc.id);
       const updated = [
@@ -41,5 +40,16 @@ export function useRecentlyViewed() {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  return { recentlyViewed, addRecentlyViewed, clearRecentlyViewed };
+  const removeStaleItems = useCallback((validIds: Set<string>) => {
+    setRecentlyViewed(prev => {
+      const filtered = prev.filter(item => validIds.has(item.id));
+      if (filtered.length !== prev.length) {
+        if (filtered.length === 0) localStorage.removeItem(STORAGE_KEY);
+        else localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      }
+      return filtered;
+    });
+  }, []);
+
+  return { recentlyViewed, addRecentlyViewed, clearRecentlyViewed, removeStaleItems };
 }

@@ -1,15 +1,15 @@
-# Vaulty
+# Document Vault
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fvaulty-blue?logo=docker)](https://hub.docker.com/r/larsmikki/vaulty)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fdocument--vault-blue?logo=docker)](https://hub.docker.com/r/larsmikki/document-vault)
 [![Node 20](https://img.shields.io/badge/Node-20-brightgreen?logo=node.js)](https://nodejs.org/)
 
-**Vaulty** is a self-hosted personal document vault. Files stay as real files on disk with portable `.vaulty.json` sidecars and an indexed SQLite database for search — no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Vaulty can rebuild its index from the sidecars.
+**Document Vault** is a self-hosted personal document vault. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search — no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Document Vault can rebuild its index from the sidecars.
 
 ## Features
 
 - **Files-on-disk storage** — documents live at `vault/documents/{year}/{month}/{safe_filename}`, exactly where you can read them yourself
-- **Sidecar metadata** — every file has a `.vaulty.json` next to it so the DB can be rebuilt from disk at any time
+- **Sidecar metadata** — every file has a `.sidecar.json` next to it so the DB can be rebuilt from disk at any time
 - **Full-text search** — across titles, descriptions, vendors, tags, and notes
 - **Rich metadata** — categories, document types, vendor, amounts, dates, tags, people, assets, reminders
 - **Inbox** — unsorted uploads land in an inbox until you file them
@@ -31,37 +31,37 @@ Works on Synology, Unraid, TrueNAS, QNAP, Proxmox, or a plain Docker host.
 
 ```bash
 docker run -d \
-  --name vaulty \
+  --name document-vault \
   -p 3110:3110 \
-  -v vaulty_data:/app/vault \
+  -v document-vault_data:/app/vault \
   --restart unless-stopped \
-  larsmikki/vaulty:latest
+  larsmikki/document-vault:latest
 ```
 
 Or with Compose:
 
 ```yaml
 services:
-  vaulty:
-    image: larsmikki/vaulty:latest
-    container_name: vaulty
+  document-vault:
+    image: larsmikki/document-vault:latest
+    container_name: document-vault
     ports:
       - "3110:3110"
     environment:
       - PORT=3110
     volumes:
-      - vaulty_data:/app/vault
+      - document-vault_data:/app/vault
     restart: unless-stopped
 
 volumes:
-  vaulty_data:
+  document-vault_data:
 ```
 
 To keep the vault on a host folder you can browse directly (recommended), bind-mount instead of using a named volume:
 
 ```yaml
 volumes:
-  - /home/user/Documents/Vaulty:/app/vault
+  - /home/user/Documents/DocumentVault:/app/vault
 ```
 
 ### 2. Local install on Windows
@@ -69,8 +69,8 @@ volumes:
 Requires [Git for Windows](https://git-scm.com/download/win) and [Node.js 20+](https://nodejs.org/).
 
 ```powershell
-git clone https://github.com/larsmikki/vaulty.git
-cd vaulty
+git clone https://github.com/larsmikki/document-vault.git
+cd document-vault
 npm install
 npm run dev
 ```
@@ -86,8 +86,8 @@ npm start
 
 ```bash
 brew install node git
-git clone https://github.com/larsmikki/vaulty.git
-cd vaulty
+git clone https://github.com/larsmikki/document-vault.git
+cd document-vault
 npm install
 npm run dev
 ```
@@ -102,8 +102,8 @@ Debian/Ubuntu:
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs git
 
-git clone https://github.com/larsmikki/vaulty.git
-cd vaulty
+git clone https://github.com/larsmikki/document-vault.git
+cd document-vault
 npm install
 npm run dev
 ```
@@ -117,21 +117,21 @@ For a production build: `npm run build && npm start`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3110` (prod) / `3111` (dev API) | Port the server listens on |
-| `VAULT_ROOT` | `./vault` (dev) / `/app/vault` (Docker) | Directory holding `documents/` and `vaulty.db` |
+| `VAULT_ROOT` | `./vault` (dev) / `/app/vault` (Docker) | Directory holding `documents/` and `data.db` |
 
 ## Data layout
 
 ```
 vault/
-  vaulty.db                # SQLite index (rebuildable from sidecars)
+  data.db                  # SQLite index (rebuildable from sidecars)
   documents/
     2026/
       05/
         2026-05-21_acme_invoice_receipt.pdf
-        2026-05-21_acme_invoice_receipt.pdf.vaulty.json
+        2026-05-21_acme_invoice_receipt.pdf.sidecar.json
 ```
 
-The `.vaulty.json` sidecars are the source of truth — if the database is lost, run **Settings → Rescan** to rebuild it from the files on disk.
+The `.sidecar.json` files are the source of truth — if the database is lost, run **Settings → Rescan** to rebuild it from the files on disk.
 
 ## Usage
 
@@ -158,4 +158,4 @@ npm test
 
 ## Support
 
-If Vaulty saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.
+If Document Vault saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.

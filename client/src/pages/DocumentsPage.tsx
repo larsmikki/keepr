@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api';
@@ -6,10 +6,10 @@ import type { Document, PaginatedResponse } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button, ConfirmDialog, Input, Select, useToast } from '@/components/ui';
 import { UploadModal } from '@/components/UploadModal';
-import { getFileIcon } from '@/utils/fileUtils';
-import { CATEGORIES, DOCUMENT_TYPES } from '@/constants';
+import { getFileIcon, getFileTypeLabel, parseTags } from '@/utils/fileUtils';
+import { ShortcutBus } from '@/components/Layout';
 
-type SortField = 'createdAt' | 'updatedAt' | 'documentDate' | 'title' | 'category' | 'documentType' | 'amount' | 'fileSize';
+type SortField = 'createdAt' | 'updatedAt' | 'documentDate' | 'title' | 'fileSize';
 const EMPTY_DOCS: Document[] = [];
 
 const TrashIcon = () => (
@@ -18,15 +18,30 @@ const TrashIcon = () => (
   </svg>
 );
 
+const formatSize = (bytes?: number) => {
+  if (!bytes) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 export const DocumentsPage: React.FC = () => {
   const { theme } = useTheme();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [category, setCategory] = useState('');
-  const [documentType, setDocumentType] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const search = searchParams.get('search') || '';
+
+  const setSearch = (value: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set('search', value); else next.delete('search');
+      return next;
+    }, { replace: true });
+  };
+
   const [sortBy, setSortBy] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
@@ -35,13 +50,15 @@ export const DocumentsPage: React.FC = () => {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const documentParams = useMemo(() => ({
-    search: search || undefined,
-    category: category || undefined,
-    documentType: documentType || undefined,
-    sortBy,
-    sortDir,
-  }), [category, documentType, search, sortBy, sortDir]);
+  // Wire up global keyboard shortcuts
+  useEffect(() => {
+    const unsubSearch = ShortcutBus.on('focus-search', () => searchInputRef.current?.focus());
+    const unsubEsc = ShortcutBus.on('escape', () => setSearch(''));
+    return () => { unsubSearch(); unsubEsc(); };
+  }, []);
+
+  const documentParams = useMemo(() => ({ search: search || undefined, sortBy, sortDir }), [search, sortBy, sortDir]);
+
   const { data: documentData, isLoading: loading } = useQuery({
     queryKey: ['documents-page', documentParams],
     queryFn: async () => {
@@ -51,6 +68,7 @@ export const DocumentsPage: React.FC = () => {
       return { docs: paged.documents, total: paged.total };
     },
   });
+
   const docs = documentData?.docs ?? EMPTY_DOCS;
   const totalDocs = documentData?.total ?? 0;
   const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['documents-page'] });
@@ -58,20 +76,8 @@ export const DocumentsPage: React.FC = () => {
   const visibleIds = useMemo(() => docs.map(doc => doc.id), [docs]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
 
-  const formatSize = (bytes?: number) => {
-    if (!bytes) return '-';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   const toggleSelected = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
   const toggleAllVisible = () => {
@@ -89,15 +95,9 @@ export const DocumentsPage: React.FC = () => {
       await api.deleteDocument(deleteId);
       addToast('Document deleted', 'success');
       setDeleteId(null);
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(deleteId);
-        return next;
-      });
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(deleteId); return next; });
       void refreshDocuments();
-    } catch (err) {
-      addToast('Delete failed: ' + err, 'error');
-    }
+    } catch (err) { addToast('Delete failed: ' + err, 'error'); }
   };
 
   const deleteSelectedDocuments = async () => {
@@ -109,19 +109,14 @@ export const DocumentsPage: React.FC = () => {
       setSelectedIds(new Set());
       setBulkDeleteOpen(false);
       void refreshDocuments();
-    } catch (err) {
-      addToast('Bulk delete failed: ' + err, 'error');
-    }
+    } catch (err) { addToast('Bulk delete failed: ' + err, 'error'); }
   };
 
   const sortButton = (field: SortField, label: React.ReactNode) => (
     <button
       className="font-semibold hover:opacity-75"
       style={{ color: sortBy === field ? theme.accent : theme.text }}
-      onClick={() => {
-        setSortBy(field);
-        setSortDir(sortBy === field && sortDir === 'asc' ? 'desc' : 'asc');
-      }}
+      onClick={() => { setSortBy(field); setSortDir(sortBy === field && sortDir === 'asc' ? 'desc' : 'asc'); }}
     >
       {label} {sortBy === field ? (sortDir === 'asc' ? '↑' : '↓') : ''}
     </button>
@@ -137,25 +132,20 @@ export const DocumentsPage: React.FC = () => {
           </div>
           <Button variant="primary" onClick={() => setShowUpload(true)}>Upload</Button>
         </div>
-
         <div className="flex flex-wrap gap-2">
-          <Input className="max-w-sm" placeholder="Search documents..." value={search} onChange={e => setSearch(e.target.value)} />
-          <Select className="!w-auto" value={category} onChange={e => setCategory(e.target.value)}>
-            <option value="">All categories</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </Select>
-          <Select className="!w-auto" value={documentType} onChange={e => setDocumentType(e.target.value)}>
-            <option value="">All types</option>
-            {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </Select>
+          <Input
+            ref={searchInputRef}
+            className="max-w-sm"
+            placeholder="Search documents…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => e.key === 'Escape' && setSearch('')}
+          />
           <Select className="!w-auto" value={sortBy} onChange={e => setSortBy(e.target.value as SortField)}>
             <option value="createdAt">Added</option>
             <option value="updatedAt">Modified</option>
             <option value="documentDate">Document date</option>
             <option value="title">Title</option>
-            <option value="category">Category</option>
-            <option value="documentType">Type</option>
-            <option value="amount">Amount</option>
             <option value="fileSize">Size</option>
           </Select>
           <Button onClick={() => setViewMode(viewMode === 'table' ? 'grid' : 'table')}>
@@ -180,65 +170,68 @@ export const DocumentsPage: React.FC = () => {
             <thead style={{ background: theme.surface2 }}>
               <tr>
                 <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all visible documents"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                  />
+                  <input type="checkbox" aria-label="Select all" checked={allVisibleSelected} onChange={toggleAllVisible} />
                 </th>
                 <th className="px-4 py-3">{sortButton('title', 'Title')}</th>
-                <th className="px-4 py-3">{sortButton('category', 'Category')}</th>
-                <th className="px-4 py-3">{sortButton('documentType', 'Type')}</th>
-                <th className="px-4 py-3">{sortButton('documentDate', 'Date')}</th>
-                <th className="px-4 py-3">{sortButton('fileSize', 'Size')}</th>
+                <th className="px-4 py-3 hidden md:table-cell">{sortButton('documentDate', 'Date')}</th>
+                <th className="px-4 py-3 hidden lg:table-cell">{sortButton('fileSize', 'Size')}</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-text2">Loading...</td></tr>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-text2">Loading…</td></tr>
               ) : docs.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-text2">No documents found.</td></tr>
-              ) : docs.map(doc => (
-                <tr
-                  key={doc.id}
-                  className="border-t cursor-pointer hover:opacity-90"
-                  style={{ borderColor: theme.border }}
-                  onClick={() => navigate(`/documents/${doc.id}`)}
-                >
-                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${doc.title}`}
-                      checked={selectedIds.has(doc.id)}
-                      onChange={() => toggleSelected(doc.id)}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3 text-left">
-                      <span className="text-lg" aria-hidden="true">{getFileIcon(doc.storedFilename)}</span>
-                      <span className="font-medium text-text">{doc.title}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-text2">{doc.category || 'Uncategorized'}</td>
-                  <td className="px-4 py-3 text-text2">{doc.documentType || '-'}</td>
-                  <td className="px-4 py-3 text-text2">{doc.documentDate || '-'}</td>
-                  <td className="px-4 py-3 text-text2">{formatSize(doc.fileSize)}</td>
-                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md transition-opacity hover:opacity-70 focus:outline-none focus:ring-2"
-                      style={{ color: '#dc2626' }}
-                      onClick={() => setDeleteId(doc.id)}
-                      title="Delete document"
-                      aria-label={`Delete ${doc.title}`}
-                    >
-                      <TrashIcon />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-text2">No documents found.</td></tr>
+              ) : docs.map(doc => {
+                const tags = parseTags(doc.tags).slice(0, 3);
+                return (
+                  <tr
+                    key={doc.id}
+                    className="border-t cursor-pointer hover:opacity-90"
+                    style={{ borderColor: theme.border }}
+                    onClick={() => navigate(`/documents/${doc.id}`)}
+                  >
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" aria-label={`Select ${doc.title}`} checked={selectedIds.has(doc.id)} onChange={() => toggleSelected(doc.id)} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg shrink-0" aria-hidden="true">{getFileIcon(doc.storedFilename)}</span>
+                        <div className="min-w-0">
+                          <div className="font-medium text-text truncate flex items-center gap-1.5">
+                            {doc.title}
+                            {doc.favorite ? <span className="text-amber-500 text-xs" title="Favorite">★</span> : null}
+                          </div>
+                          <div className="text-xs text-text2 flex items-center gap-1.5 mt-0.5">
+                            <span>{getFileTypeLabel(doc.storedFilename)} · {formatSize(doc.fileSize)}</span>
+                            {doc.folder && <><span>·</span><span className="italic">{doc.folder}</span></>}
+                            {tags.length > 0 && tags.map(t => (
+                              <span key={t} className="px-1.5 py-px rounded-full text-[10px]" style={{ background: `${theme.accent}15`, color: theme.accent }}>{t}</span>
+                            ))}
+                          </div>
+                          {doc.description && (
+                            <div className="text-xs text-text2 truncate mt-0.5 max-w-xs">{doc.description}</div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-text2 hidden md:table-cell">{doc.documentDate || '-'}</td>
+                    <td className="px-4 py-3 text-text2 hidden lg:table-cell">{formatSize(doc.fileSize)}</td>
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md transition-opacity hover:opacity-70"
+                        style={{ color: '#dc2626' }}
+                        onClick={() => setDeleteId(doc.id)}
+                        title="Delete document"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -259,46 +252,23 @@ export const DocumentsPage: React.FC = () => {
                 onClick={e => e.stopPropagation()}
                 onChange={() => toggleSelected(doc.id)}
               />
-              <div className="h-24 flex items-center justify-center text-5xl mb-3" style={{ background: theme.surface2 }}>
+              <div className="h-24 flex items-center justify-center text-5xl mb-3 rounded-lg" style={{ background: theme.surface2 }}>
                 {getFileIcon(doc.storedFilename)}
               </div>
               <div className="font-medium truncate text-text">{doc.title}</div>
-              <div className="text-xs mt-1 text-text2">{doc.category || 'Uncategorized'} - {doc.documentType || 'Untyped'}</div>
-              <div className="text-xs mt-1 text-text2">{formatSize(doc.fileSize)}</div>
+              <div className="text-xs mt-1 text-text2">{getFileTypeLabel(doc.storedFilename)} · {formatSize(doc.fileSize)}</div>
+              {doc.documentDate && <div className="text-xs mt-0.5 text-text2">{doc.documentDate}</div>}
             </div>
           ))}
         </div>
       )}
 
       {showUpload && (
-        <UploadModal
-          onClose={() => setShowUpload(false)}
-          onSuccess={() => {
-            setShowUpload(false);
-            void refreshDocuments();
-          }}
-        />
+        <UploadModal onClose={() => setShowUpload(false)} onSuccess={() => { void refreshDocuments(); }} />
       )}
 
-      <ConfirmDialog
-        open={!!deleteId}
-        title="Delete document"
-        message="This document will be permanently deleted."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={deleteDocument}
-        onClose={() => setDeleteId(null)}
-      />
-
-      <ConfirmDialog
-        open={bulkDeleteOpen}
-        title="Delete selected documents"
-        message={`${selectedIds.size} document${selectedIds.size === 1 ? '' : 's'} will be permanently deleted.`}
-        confirmLabel="Delete"
-        destructive
-        onConfirm={deleteSelectedDocuments}
-        onClose={() => setBulkDeleteOpen(false)}
-      />
+      <ConfirmDialog open={!!deleteId} title="Delete document" message="This document will be permanently deleted." confirmLabel="Delete" destructive onConfirm={deleteDocument} onClose={() => setDeleteId(null)} />
+      <ConfirmDialog open={bulkDeleteOpen} title="Delete selected documents" message={`${selectedIds.size} document${selectedIds.size === 1 ? '' : 's'} will be permanently deleted.`} confirmLabel="Delete" destructive onConfirm={deleteSelectedDocuments} onClose={() => setBulkDeleteOpen(false)} />
     </div>
   );
 };

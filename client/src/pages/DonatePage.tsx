@@ -46,7 +46,7 @@ export const DonatePage: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-extrabold tracking-tight text-text">Support Vaulty</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-text">Support Document Vault</h1>
         <p className="text-sm mt-0.5 text-text2">
           I build privacy-first, self-hosted tools with no subscriptions, no ads, and no tracking.
           Your data stays yours.
@@ -55,7 +55,7 @@ export const DonatePage: React.FC = () => {
 
       <Surface className="p-6 mb-5">
         <h2 className="text-base font-bold mb-1 text-text">What you get</h2>
-        <p className="text-xs mb-5 text-text2">Vaulty stays free, open source, and self-hosted.</p>
+        <p className="text-xs mb-5 text-text2">Document Vault stays free, open source, and self-hosted.</p>
         <div className="flex flex-wrap gap-2">
           {badges.map(({ Icon, label, color }) => (
             <div
@@ -99,7 +99,7 @@ export const DonatePage: React.FC = () => {
 
       <Surface className="p-6">
         <h2 className="text-base font-bold mb-1 text-text">Thank you</h2>
-        <p className="text-xs text-text2">Every bit of support helps keep Vaulty available for everyone.</p>
+        <p className="text-xs text-text2">Every bit of support helps keep Document Vault available for everyone.</p>
       </Surface>
     </div>
   );

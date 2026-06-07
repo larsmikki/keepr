@@ -1,8 +1,8 @@
-﻿import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDocuments } from '@/contexts/DocumentsContext';
 import { Button, Input, Surface } from '@/components/ui';
-import { getFileIcon } from '@/utils/fileUtils';
+import { getFileIcon, parseTags } from '@/utils/fileUtils';
 import { UploadModal } from '@/components/UploadModal';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api';
@@ -34,9 +34,11 @@ const StarIcon = () => (
     <path d="M9.05 2.93c.3-.92 1.6-.92 1.9 0l1.07 3.29a1 1 0 00.95.69h3.46c.97 0 1.37 1.24.59 1.81l-2.8 2.03a1 1 0 00-.36 1.12l1.07 3.29c.3.92-.76 1.69-1.54 1.12l-2.8-2.03a1 1 0 00-1.18 0l-2.8 2.03c-.78.57-1.84-.2-1.54-1.12l1.07-3.29a1 1 0 00-.36-1.12l-2.8-2.03c-.78-.57-.38-1.81.59-1.81h3.46a1 1 0 00.95-.69l1.07-3.29z" />
   </svg>
 );
-const ArchiveIcon = () => (
+const DatabaseIcon = () => (
   <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M3 4.5A1.5 1.5 0 014.5 3h11A1.5 1.5 0 0117 4.5V7a1 1 0 01-.35.76V15a2 2 0 01-2 2h-9.3a2 2 0 01-2-2V7.76A1 1 0 013 7V4.5zM5 8v7h10V8H5zm1.5 2a.75.75 0 000 1.5h7a.75.75 0 000-1.5h-7z" clipRule="evenodd" />
+    <path d="M3 4.5C3 3.12 6.13 2 10 2s7 1.12 7 2.5v3C17 8.88 13.87 10 10 10S3 8.88 3 7.5v-3z" />
+    <path d="M3 7.5v3C3 11.88 6.13 13 10 13s7-1.12 7-2.5v-3c0 1.38-3.13 2.5-7 2.5S3 8.88 3 7.5z" />
+    <path d="M3 10.5v3C3 14.88 6.13 16 10 16s7-1.12 7-2.5v-3c0 1.38-3.13 2.5-7 2.5S3 11.88 3 10.5z" />
   </svg>
 );
 const InboxIcon = () => (
@@ -54,36 +56,38 @@ export const FrontPage: React.FC = () => {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const { docs, loading, refresh } = useDocuments();
-  const { recentlyViewed, clearRecentlyViewed } = useRecentlyViewed();
+  const { recentlyViewed, clearRecentlyViewed, removeStaleItems } = useRecentlyViewed();
   const [search, setSearch] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const { data: dashboardSignals, refetch: refreshDashboardSignals } = useQuery({
     queryKey: ['vault-dashboard-signals'],
     queryFn: async () => {
-      const [missing, duplicates, activity] = await Promise.allSettled([
+      const [missing, duplicates, storage] = await Promise.allSettled([
         api.checkMissingDocuments(),
         api.getDuplicates(),
-        api.getDocumentActivity(12),
+        api.getStorageStats(),
       ]);
 
       return {
         missingDocs: missing.status === 'fulfilled' && missing.value?.missing ? missing.value.missing : [],
         duplicateGroups: duplicates.status === 'fulfilled' ? duplicates.value : {},
-        activityData: activity.status === 'fulfilled' ? activity.value : [],
+        storageStats: storage.status === 'fulfilled' ? storage.value : null,
       };
     },
   });
   const missingDocs = dashboardSignals?.missingDocs ?? [];
   const duplicateGroups = dashboardSignals?.duplicateGroups ?? {};
-  const activityData = dashboardSignals?.activityData ?? [];
+  const storageStats = dashboardSignals?.storageStats ?? null;
 
   const stats = useMemo(() => {
+    const parseTags = (raw?: string): string[] => {
+      if (!raw) return [];
+      try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+    };
     return {
       total: docs.length,
-      inbox: docs.filter((d) => !d.category).length,
+      inbox: docs.filter((d) => parseTags(d.tags).length === 0).length,
       favorites: docs.filter((d) => d.favorite).length,
-      archived: docs.filter((d) => d.archived).length,
-      missingMetadata: docs.filter((d) => !d.category || !d.documentType).length,
     };
   }, [docs]);
 
@@ -96,8 +100,7 @@ export const FrontPage: React.FC = () => {
     const q = search.toLowerCase();
     return docs.filter(d =>
       d.title?.toLowerCase().includes(q) ||
-      d.category?.toLowerCase().includes(q) ||
-      d.tags && JSON.parse(d.tags).some((t: string) => t.toLowerCase().includes(q))
+      parseTags(d.tags).some((t: string) => t.toLowerCase().includes(q))
     ).slice(0, 10);
   }, [docs, search]);
 
@@ -106,17 +109,29 @@ export const FrontPage: React.FC = () => {
     const q = search.toLowerCase();
     return docs.filter(d =>
       d.title?.toLowerCase().includes(q) ||
-      d.category?.toLowerCase().includes(q) ||
-      d.tags && JSON.parse(d.tags).some((t: string) => t.toLowerCase().includes(q))
+      parseTags(d.tags).some((t: string) => t.toLowerCase().includes(q))
     );
   }, [docs, search]);
 
-  const statCards: { label: string; sub: string; value: number; to: string; icon: React.ReactNode }[] = [
-    { label: 'Total', sub: 'All documents', value: stats.total, to: '/documents', icon: <FolderIcon /> },
-    { label: 'Favorites', sub: 'Starred', value: stats.favorites, to: '/documents?favorite=true', icon: <StarIcon /> },
-    { label: 'Archived', sub: 'Long-term', value: stats.archived, to: '/documents?archived=true', icon: <ArchiveIcon /> },
-    { label: 'Inbox', sub: 'Needs action', value: stats.inbox, to: '/inbox', icon: <InboxIcon /> },
-    { label: 'Incomplete', sub: 'Missing data', value: stats.missingMetadata, to: '/documents', icon: <ClipboardIcon /> },
+  useEffect(() => {
+    if (!loading && docs.length >= 0) {
+      removeStaleItems(new Set(docs.map(d => d.id)));
+    }
+  }, [docs, loading, removeStaleItems]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  };
+
+  const statCards = [
+    { label: 'Total', sub: 'All documents', display: String(stats.total), to: '/documents', icon: <FolderIcon /> },
+    { label: 'Favorites', sub: 'Starred', display: String(stats.favorites), to: '/documents?favorite=true', icon: <StarIcon /> },
+    { label: 'Inbox', sub: 'Needs action', display: String(stats.inbox), to: '/inbox', icon: <InboxIcon /> },
+    { label: 'Total size', sub: 'Vault storage used', display: storageStats ? formatBytes(storageStats.totalSize) : '—', to: '/settings', icon: <DatabaseIcon /> },
   ];
 
   return (
@@ -180,7 +195,7 @@ export const FrontPage: React.FC = () => {
               >
                 <div>
                   <div className="text-sm font-medium text-text">{doc.title}</div>
-                  <div className="text-xs text-text2">{doc.category || 'Uncategorized'} - {doc.documentDate || 'No date'}</div>
+                  <div className="text-xs text-text2">{doc.documentDate || 'No date'}</div>
                 </div>
                 <span className="text-xs text-text2">-&gt;</span>
               </div>
@@ -197,22 +212,22 @@ export const FrontPage: React.FC = () => {
 
       {!search.trim() && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             {statCards.map(card => (
               <Surface
                 key={card.label}
-                className="p-5 card-hover cursor-pointer"
+                className="p-4 card-hover cursor-pointer"
                 style={{ cursor: 'pointer' }}
                 onClick={() => navigate(card.to)}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs uppercase tracking-wider font-semibold text-text2">{card.label}</div>
-                  <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: `${theme.accent}18`, color: theme.accent }}>
-                    {card.icon}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase text-text2">{card.label}</div>
+                  <div className="h-7 w-7 rounded-md flex items-center justify-center shrink-0" style={{ background: `${theme.accent}18`, color: theme.accent }}>
+                    <span className="scale-75">{card.icon}</span>
                   </div>
                 </div>
-                <div className="text-3xl font-bold mt-3 text-text">{card.value}</div>
-                <div className="text-xs mt-1 text-text2">{card.sub}</div>
+                <div className="text-2xl font-bold mt-2 text-text">{card.display}</div>
+                <div className="text-xs mt-0.5 text-text2">{card.sub}</div>
               </Surface>
             ))}
           </div>
@@ -260,49 +275,6 @@ export const FrontPage: React.FC = () => {
           )}
 
 
-          {activityData.length > 0 && (
-            <Surface className="p-6 mb-5">
-              <div className="flex items-center justify-between gap-3 mb-5">
-                <div>
-                  <h2 className="text-base font-bold mb-1 text-text">Document activity</h2>
-                  <p className="text-xs text-text2">Documents added per month, last 12 months.</p>
-                </div>
-                <div className="h-10 w-10 rounded-lg flex items-center justify-center" style={{ background: `${theme.accent}18`, color: theme.accent }}>
-                  <FolderIcon />
-                </div>
-              </div>
-              <div className="flex items-end justify-between gap-1 h-32">
-                {activityData.map((entry, idx) => {
-                  const maxCount = Math.max(...activityData.map(e => e.count), 1);
-                  const height = entry.count > 0 ? Math.max((entry.count / maxCount) * 100, 18) : 0;
-                  const monthDate = new Date(entry.month + '-01');
-                  const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short' });
-                  const isCurrentMonth = idx === activityData.length - 1;
-                  return (
-                    <div key={entry.month} className="flex-1 h-full flex flex-col items-center justify-end gap-2">
-                      <div className="w-full flex-1 flex items-end">
-                        <div
-                          className="w-full rounded-t-md transition-opacity hover:opacity-80"
-                          style={{
-                            height: entry.count > 0 ? `${height}%` : '2px',
-                            background: entry.count > 0 ? (isCurrentMonth ? theme.gradient : theme.accent) : theme.border,
-                            opacity: entry.count > 0 ? (isCurrentMonth ? 1 : 0.65) : 0.5,
-                          }}
-                          title={`${entry.count} document${entry.count !== 1 ? 's' : ''}`}
-                        />
-                      </div>
-                      <span className="text-xs" style={{ color: isCurrentMonth ? theme.text : theme.text2 }}>{monthLabel}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 flex items-center justify-between text-xs text-text2">
-                <span>Total: {activityData.reduce((sum, e) => sum + e.count, 0)} documents</span>
-                <span>Avg: {Math.round(activityData.reduce((sum, e) => sum + e.count, 0) / activityData.length)} per month</span>
-              </div>
-            </Surface>
-          )}
-
           {recentlyViewed.length > 0 && (
             <Surface className="p-6 mb-5">
               <div className="flex items-start justify-between mb-1">
@@ -327,7 +299,6 @@ export const FrontPage: React.FC = () => {
                       <span className="text-base" aria-hidden="true">{getFileIcon(item.storedFilename)}</span>
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate text-text">{item.title}</div>
-                        <div className="text-xs text-text2">{item.category || 'Uncategorized'}</div>
                       </div>
                     </div>
                     <span className="text-xs text-text2">-&gt;</span>
@@ -340,52 +311,43 @@ export const FrontPage: React.FC = () => {
           <Surface className="p-6 mb-5">
             <h2 className="text-base font-bold mb-1 text-text">Recent documents</h2>
             <p className="text-xs mb-5 text-text2">Latest additions to your vault.</p>
-            <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
-              <table className="w-full text-left text-sm">
-                <thead className="border-b" style={{ borderColor: theme.border, background: theme.surface }}>
-                  <tr className="text-text">
-                    <th className="px-4 py-3 font-semibold">Title</th>
-                    <th className="px-4 py-3 font-semibold">Category</th>
-                    <th className="px-4 py-3 font-semibold">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="text-text">
-                  {loading ? (
-                    [...Array(5)].map((_, i) => (
-                      <tr key={i} className="border-b" style={{ borderColor: theme.border }}>
-                        <td className="px-4 py-3"><div className="skeleton h-4 w-32" /></td>
-                        <td className="px-4 py-3"><div className="skeleton h-4 w-20" /></td>
-                        <td className="px-4 py-3"><div className="skeleton h-4 w-24" /></td>
-                      </tr>
-                    ))
-                  ) : sortedDocs.length === 0 ? (
-                    <tr style={{ borderColor: theme.border }}>
-                      <td colSpan={3} className="px-4 py-12 text-center text-text2">
-                        Your vault is empty. Upload your first document to get started.
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedDocs.slice(0, 5).map(doc => (
-                      <tr
-                        key={doc.id}
-                        className="border-b last:border-0 transition-opacity hover:opacity-90 cursor-pointer"
-                        style={{ borderColor: theme.border }}
-                        onClick={() => navigate(`/documents/${doc.id}`)}
-                      >
-                        <td className="px-4 py-3 font-medium">
-                          <span className="flex items-center gap-2 text-text">
-                            <span className="text-base" aria-hidden="true">{getFileIcon(doc.storedFilename)}</span>
-                            {doc.title}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-text2">{doc.category || 'Uncategorized'}</td>
-                        <td className="px-4 py-3 text-text2">{doc.documentDate || '-'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {loading ? (
+              <ul className="rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+                {[...Array(5)].map((_, i) => (
+                  <li key={i} className="flex items-center justify-between px-4 py-3 border-b last:border-0" style={{ borderColor: theme.border, background: theme.surface }}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="skeleton h-5 w-5 rounded" />
+                      <div className="skeleton h-4 w-40" />
+                    </div>
+                    <div className="skeleton h-4 w-20" />
+                  </li>
+                ))}
+              </ul>
+            ) : sortedDocs.length === 0 ? (
+              <div className="rounded-xl px-4 py-12 text-center text-text2 text-sm" style={{ border: `1px solid ${theme.border}` }}>
+                Your vault is empty. Upload your first document to get started.
+              </div>
+            ) : (
+              <ul className="rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+                {sortedDocs.slice(0, 5).map(doc => (
+                  <li
+                    key={doc.id}
+                    className="flex items-center justify-between px-4 py-3 cursor-pointer border-b last:border-0 transition-opacity hover:opacity-90"
+                    style={{ borderColor: theme.border, background: theme.surface }}
+                    onClick={() => navigate(`/documents/${doc.id}`)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-base" aria-hidden="true">{getFileIcon(doc.storedFilename)}</span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate text-text">{doc.title}</div>
+                        {doc.documentDate && <div className="text-xs text-text2">{doc.documentDate}</div>}
+                      </div>
+                    </div>
+                    <span className="text-xs text-text2">-&gt;</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Surface>
         </>
       )}
@@ -396,7 +358,6 @@ export const FrontPage: React.FC = () => {
           onSuccess={async () => {
             await refresh();
             await refreshDashboardSignals();
-            setIsUploading(false);
           }}
         />
       )}

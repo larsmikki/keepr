@@ -8,10 +8,13 @@ const router = express.Router();
 
 const SETTINGS_KEYS = new Set([
   'ai_provider',
-  'ai_model',
+  'ai_model',         // legacy — kept so old saves still read back correctly
+  'ai_openai_model',
+  'ai_ollama_model',
   'ai_api_key',
   'ai_base_url',
   'ai_ollama_url',
+  'ai_temperature',
   'folder_organization',
 ]);
 
@@ -52,25 +55,11 @@ router.put('/', (req, res) => {
 
 router.get('/storage-stats', (_req, res) => {
   try {
-    const docs = db.prepare('SELECT id, category, documentType, fileSize FROM documents').all() as Array<{ id: string; category: string | null; documentType: string | null; fileSize: number | null }>;
+    const docs = db.prepare('SELECT id, fileSize FROM documents').all() as Array<{ id: string; fileSize: number | null }>;
 
     let totalSize = 0;
-    const byCategory: Record<string, { count: number; size: number }> = {};
-    const byType: Record<string, { count: number; size: number }> = {};
-
     for (const doc of docs) {
-      const size = doc.fileSize || 0;
-      totalSize += size;
-
-      const cat = doc.category || 'Uncategorized';
-      if (!byCategory[cat]) byCategory[cat] = { count: 0, size: 0 };
-      byCategory[cat].count++;
-      byCategory[cat].size += size;
-
-      const type = doc.documentType || 'Unknown';
-      if (!byType[type]) byType[type] = { count: 0, size: 0 };
-      byType[type].count++;
-      byType[type].size += size;
+      totalSize += doc.fileSize || 0;
     }
 
     const vaultPath = config.vaultRoot;
@@ -88,12 +77,6 @@ router.get('/storage-stats', (_req, res) => {
     res.json({
       totalDocuments: docs.length,
       totalSize,
-      byCategory: Object.entries(byCategory)
-        .map(([category, data]) => ({ category, ...data }))
-        .sort((a, b) => b.size - a.size),
-      byType: Object.entries(byType)
-        .map(([documentType, data]) => ({ documentType, ...data }))
-        .sort((a, b) => b.size - a.size),
       diskUsage,
     });
   } catch {

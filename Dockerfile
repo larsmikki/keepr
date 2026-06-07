@@ -25,7 +25,8 @@ COPY --from=builder /app/server/dist server/dist
 COPY --from=builder /app/server/src/db/migrations server/dist/db/migrations
 COPY --from=builder /app/client/dist client/dist
 
-RUN apk add --no-cache su-exec wget \
+RUN apk add --no-cache su-exec wget python3 py3-pip \
+  && pip3 install --no-cache-dir --break-system-packages 'markitdown[pdf,docx,pptx,xlsx]' \
   && mkdir -p /app/vault \
   && chown -R node:node /app
 

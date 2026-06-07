@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-Vaulty is a self-hosted personal document vault — a full-stack TypeScript monorepo (React + Express) that stores files as real files on disk with portable `.vaulty.json` sidecar metadata and an indexed SQLite database for search.
+Document Vault is a self-hosted personal document vault — a full-stack TypeScript monorepo (React + Express) that stores files as real files on disk with portable `.sidecar.json` sidecar metadata and an indexed SQLite database for search.
 
 ## Commands
 
@@ -31,13 +31,13 @@ Dev servers: client at `localhost:3110`, API at `localhost:3111`. The Vite dev s
 
 ## Architecture
 
-**Core principle**: files remain real files on disk; Vaulty adds metadata structure around them.
+**Core principle**: files remain real files on disk; Document Vault adds metadata structure around them.
 
 ### Storage model
 Every document has three representations that must stay in sync:
 1. The actual file at `vault/documents/{year}/{month}/{safe_filename}`
-2. A `.vaulty.json` sidecar alongside the file (enables DB recovery from disk)
-3. A row in the SQLite database (`vault/vaulty.db`) for search/indexing
+2. A `.sidecar.json` sidecar alongside the file (enables DB recovery from disk)
+3. A row in the SQLite database (`vault/data.db`) for search/indexing
 
 ### Server (`server/src/`)
 - **`config.ts`** — central config (`port`, `vaultRoot`); reads `PORT` and `VAULT_ROOT` env vars
@@ -69,7 +69,7 @@ Supporting tables: `categories` (16 defaults like Identity, Finance, Housing), `
 
 ### Key conventions
 - Vault root comes from `config.vaultRoot` (`VAULT_ROOT` env var, default `./vault`) — never hardcode `process.cwd()/vault`
-- DB lives at `{vaultRoot}/vaulty.db`; add new schema as a numbered `.sql` file in `db/migrations/`
+- DB lives at `{vaultRoot}/data.db`; add new schema as a numbered `.sql` file in `db/migrations/`
 - All client API calls go through `api.ts` — never raw `fetch` in components
 - Filenames are sanitized via `fileUtils.ts` before writing to disk
 - SHA256 checksums are used for duplicate detection on upload and import

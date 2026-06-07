@@ -1,29 +1,26 @@
 import React, { useState, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Button, Input, Modal, Select, Textarea, useToast } from '@/components/ui';
+import { Button, Input, Modal, Textarea, useToast } from '@/components/ui';
 import { api } from '@/api';
-import { CATEGORIES, DOCUMENT_TYPES } from '@/constants';
 import type { MetadataSuggestion } from '@/types';
 
 interface UploadFormProps {
   onClose: () => void;
   onSuccess: () => void | Promise<void>;
-  initialFile?: File | null;
+  initialFiles?: File[];
 }
 
-export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, initialFile }) => {
+export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, initialFiles }) => {
   const { theme } = useTheme();
   const { addToast } = useToast();
-  const [files, setFiles] = useState<File[]>(initialFile ? [initialFile] : []);
+  const [files, setFiles] = useState<File[]>(initialFiles ?? []);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
-    title: initialFile ? initialFile.name.replace(/\.[^/.]+$/, '') : '',
+    title: initialFiles?.length === 1 ? initialFiles[0].name.replace(/\.[^/.]+$/, '') : '',
     description: '',
-    category: 'Other',
-    documentType: '',
     documentDate: new Date().toISOString().split('T')[0],
   });
 
@@ -35,8 +32,6 @@ export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, ini
       setFormData(prev => ({
         ...prev,
         title: suggestions.title || titleWithoutExt,
-        category: suggestions.category || prev.category,
-        documentType: suggestions.documentType || prev.documentType,
         documentDate: suggestions.documentDate || prev.documentDate,
       }));
     } catch {
@@ -51,10 +46,7 @@ export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, ini
     e.preventDefault();
     setIsDragging(false);
     const droppedFiles = Array.from(e.dataTransfer.files);
-    if (droppedFiles.length > 0) {
-      handleFilesSelect(droppedFiles);
-      fetchSuggestions(droppedFiles[0].name);
-    }
+    if (droppedFiles.length > 0) handleFilesSelect(droppedFiles);
   };
 
   const handleFilesSelect = (selectedFiles: File[]) => {
@@ -92,6 +84,7 @@ export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, ini
     if (files.length === 0) return;
 
     setUploading(true);
+    let succeeded = false;
     try {
       const metadata = files.length === 1 ? formData : { ...formData, title: '' };
       const result = await api.uploadDocuments(files, metadata);
@@ -103,18 +96,24 @@ export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, ini
       } else {
         addToast(`${successCount} document${successCount !== 1 ? 's' : ''} uploaded`, 'success');
       }
-      await onSuccess();
-      onClose();
+      succeeded = true;
     } catch (err) {
       addToast('Upload failed: ' + err, 'error');
     } finally {
       setUploading(false);
     }
+
+    if (succeeded) {
+      onClose();
+      try {
+        await onSuccess();
+      } catch {}
+    }
   };
 
   return (
     <Modal open onClose={onClose} title="Upload documents" maxWidth="640px">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" data-upload-modal>
         <div>
           <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Files</label>
           {files.length > 0 ? (
@@ -172,19 +171,6 @@ export const UploadModal: React.FC<UploadFormProps> = ({ onClose, onSuccess, ini
             </div>
           )}
           <div className={files.length === 1 ? 'col-span-2 md:col-span-1' : 'col-span-2'}>
-            <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Document type</label>
-            <Select value={formData.documentType} onChange={e => setFormData({ ...formData, documentType: e.target.value })}>
-              <option value="">Not set</option>
-              {DOCUMENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Category</label>
-            <Select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
-              {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-            </Select>
-          </div>
-          <div>
             <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Document date</label>
             <Input type="date" value={formData.documentDate} onChange={e => setFormData({ ...formData, documentDate: e.target.value })} />
           </div>

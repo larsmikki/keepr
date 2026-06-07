@@ -6,7 +6,8 @@ const router = express.Router();
 router.post('/run', async (req, res) => {
   try {
     const deleteMissing = req.body?.deleteMissing === true;
-    const result = await rescanVault(deleteMissing);
+    const importNew = req.body?.importNew === true;
+    const result = await rescanVault(deleteMissing, importNew);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

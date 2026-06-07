@@ -1,14 +1,33 @@
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
-import JSZip from 'jszip';
+
+const execFileAsync = promisify(execFile);
 
 export interface ExtractedDocumentText {
   text: string;
-  source: 'pdf' | 'text' | 'office' | 'unsupported' | 'error';
+  source: 'text' | 'markitdown' | 'image' | 'ocr' | 'unsupported' | 'error';
   warning?: string;
+  attachment?: {
+    base64: string;
+    mimeType: string;
+  };
 }
 
 const MAX_TEXT_CHARS = 12000;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB raw → ~13 MB base64
+// If markitdown returns fewer chars than this for a PDF, treat it as scanned
+const SCANNED_PDF_THRESHOLD = 150;
+// Max PDF pages to OCR (to avoid very long processing times)
+const MAX_OCR_PAGES = 8;
+
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.png': 'image/png', '.gif': 'image/gif',
+  '.bmp': 'image/bmp', '.webp': 'image/webp',
+  '.tiff': 'image/tiff', '.tif': 'image/tiff',
+};
 
 function cleanAndLimit(text: string): string {
   return text
@@ -21,52 +40,13 @@ function cleanAndLimit(text: string): string {
     .slice(0, MAX_TEXT_CHARS);
 }
 
-function decodeXmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_match, code) => String.fromCharCode(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCharCode(parseInt(code, 16)));
-}
-
-function extractTaggedText(xml: string, tagNames: string[]): string {
-  const parts: string[] = [];
-  for (const tagName of tagNames) {
-    const regex = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, 'g');
-    for (const match of xml.matchAll(regex)) {
-      const text = match[1].replace(/<[^>]+>/g, '');
-      if (text.trim()) parts.push(decodeXmlEntities(text));
-    }
-  }
-  return parts.join('\n');
-}
-
-async function readZipTextFiles(filePath: string, filePattern: RegExp): Promise<string[]> {
-  const data = await fs.readFile(filePath);
-  const zip = await JSZip.loadAsync(data);
-  const files = Object.values(zip.files)
-    .filter(file => !file.dir && filePattern.test(file.name))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-  const contents: string[] = [];
-  for (const file of files) {
-    contents.push(await file.async('string'));
-  }
-  return contents;
-}
-
-async function extractPdfText(filePath: string): Promise<ExtractedDocumentText> {
-  const { PDFParse } = await import('pdf-parse');
-  const data = await fs.readFile(filePath);
-  const parser = new PDFParse({ data });
+async function readFileAsAttachment(filePath: string, mimeType: string): Promise<{ base64: string; mimeType: string } | undefined> {
   try {
-    const result = await parser.getText();
-    return { text: cleanAndLimit(result.text || ''), source: 'pdf' };
-  } finally {
-    await parser.destroy();
+    const data = await fs.readFile(filePath);
+    if (data.length > MAX_ATTACHMENT_BYTES) return undefined;
+    return { base64: data.toString('base64'), mimeType };
+  } catch {
+    return undefined;
   }
 }
 
@@ -75,73 +55,172 @@ async function extractPlainText(filePath: string): Promise<ExtractedDocumentText
   return { text: cleanAndLimit(text), source: 'text' };
 }
 
-async function extractDocxText(filePath: string): Promise<ExtractedDocumentText> {
-  const xmlFiles = await readZipTextFiles(filePath, /^word\/(document|header\d+|footer\d+|footnotes|endnotes|comments)\.xml$/);
-  const text = xmlFiles.map(xml => extractTaggedText(xml, ['w:t', 'w:instrText'])).join('\n\n');
-  return { text: cleanAndLimit(text), source: 'office' };
+function markitdownError(err: any): ExtractedDocumentText {
+  if (err.killed) {
+    return { text: '', source: 'error', warning: 'markitdown timed out processing this file.' };
+  }
+  const detail = (err.stderr as string | undefined)?.trim() || err.message || String(err);
+  return { text: '', source: 'error', warning: `markitdown failed: ${detail}` };
 }
 
-async function extractPptxText(filePath: string): Promise<ExtractedDocumentText> {
-  const xmlFiles = await readZipTextFiles(filePath, /^ppt\/slides\/slide\d+\.xml$/);
-  const text = xmlFiles.map(xml => extractTaggedText(xml, ['a:t'])).join('\n\n');
-  return { text: cleanAndLimit(text), source: 'office' };
+async function extractWithMarkitdown(filePath: string): Promise<ExtractedDocumentText> {
+  const opts = { timeout: 60_000, maxBuffer: 20 * 1024 * 1024 };
+
+  const candidates: [string, string[]][] = [
+    ['markitdown',  [filePath]],
+    ['python',      ['-m', 'markitdown', filePath]],
+    ['python3',     ['-m', 'markitdown', filePath]],
+  ];
+
+  for (const [cmd, args] of candidates) {
+    try {
+      const { stdout } = await execFileAsync(cmd, args, opts);
+      const text = cleanAndLimit(stdout.trim());
+      return text
+        ? { text, source: 'markitdown' }
+        : { text: '', source: 'markitdown', warning: 'markitdown returned empty content for this file.' };
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') return markitdownError(err);
+    }
+  }
+
+  return { text: '', source: 'error', warning: 'markitdown is not installed — run: pip install markitdown' };
 }
 
-async function extractXlsxText(filePath: string): Promise<ExtractedDocumentText> {
-  const xmlFiles = await readZipTextFiles(filePath, /^xl\/(sharedStrings|worksheets\/sheet\d+)\.xml$/);
-  const text = xmlFiles.map(xml => extractTaggedText(xml, ['t', 'v'])).join('\n\n');
-  return { text: cleanAndLimit(text), source: 'office' };
+// ─── OCR via tesseract.js ─────────────────────────────────────────────────────
+
+async function ocrBuffer(imageBuffer: Buffer): Promise<string> {
+  try {
+    const { default: Tesseract } = await import('tesseract.js');
+    const { data: { text } } = await (Tesseract as any).recognize(imageBuffer, 'eng', {
+      logger: () => {},
+    });
+    return typeof text === 'string' ? text.trim() : '';
+  } catch (err: any) {
+    console.warn('[ocr] tesseract.js failed:', err.message);
+    return '';
+  }
 }
 
-async function extractOpenDocumentText(filePath: string): Promise<ExtractedDocumentText> {
-  const xmlFiles = await readZipTextFiles(filePath, /^content\.xml$/);
-  const text = xmlFiles
-    .map(xml => decodeXmlEntities(xml.replace(/<text:(p|h|list-item|span|tab|line-break)(?:\s[^>]*)?>/g, '\n').replace(/<[^>]+>/g, ' ')))
-    .join('\n\n');
-  return { text: cleanAndLimit(text), source: 'office' };
+// ─── PDF page rendering for scanned PDFs ─────────────────────────────────────
+
+async function renderPdfPages(pdfPath: string): Promise<Buffer[]> {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  // Disable worker — process synchronously in the main thread
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+
+  const pdfBuffer = await fs.readFile(pdfPath);
+  const pdf = await pdfjsLib.getDocument({
+    data: new Uint8Array(pdfBuffer),
+    useSystemFonts: true,
+    disableFontFace: true,
+  }).promise;
+
+  const pageCount = Math.min(pdf.numPages, MAX_OCR_PAGES);
+  const buffers: Buffer[] = [];
+
+  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const scale = 2.0;
+    const viewport = page.getViewport({ scale });
+
+    const canvas = createCanvas(Math.round(viewport.width), Math.round(viewport.height));
+    const ctx = canvas.getContext('2d');
+
+    const canvasFactory = {
+      create(w: number, h: number) {
+        const c = createCanvas(w, h);
+        return { canvas: c, context: c.getContext('2d') };
+      },
+      reset(pair: any, w: number, h: number) {
+        pair.canvas.width = w;
+        pair.canvas.height = h;
+      },
+      destroy(_pair: any) {},
+    };
+
+    await page.render({
+      canvasContext: ctx as any,
+      viewport,
+      canvasFactory,
+    }).promise;
+
+    buffers.push((canvas as any).toBuffer('image/png'));
+    page.cleanup();
+  }
+
+  return buffers;
 }
 
-async function extractRtfText(filePath: string): Promise<ExtractedDocumentText> {
-  const rtf = await fs.readFile(filePath, 'utf8');
-  const text = rtf
-    .replace(/\\'[0-9a-f]{2}/gi, ' ')
-    .replace(/\\par[d]?/g, '\n')
-    .replace(/\\[a-z]+\d* ?/gi, ' ')
-    .replace(/[{}]/g, ' ');
-  return { text: cleanAndLimit(text), source: 'office' };
+async function extractWithOcrPdf(filePath: string): Promise<string> {
+  try {
+    const pages = await renderPdfPages(filePath);
+    const texts: string[] = [];
+    for (const buf of pages) {
+      const text = await ocrBuffer(buf);
+      if (text) texts.push(text);
+    }
+    return cleanAndLimit(texts.join('\n\n'));
+  } catch (err: any) {
+    console.warn('[ocr] PDF OCR failed:', err.message);
+    return '';
+  }
 }
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function extractDocumentText(filePath: string, filename: string): Promise<ExtractedDocumentText> {
   const ext = path.extname(filename || filePath).toLowerCase();
+  console.log(`[extract] start | ext=${ext || '(none)'} | file=${filename || filePath}`);
 
   try {
-    if (ext === '.pdf') {
-      const result = await extractPdfText(filePath);
-      return result.text
-        ? result
-        : { ...result, warning: 'No embedded PDF text was found. This may be a scanned image-only PDF.' };
+    let result: ExtractedDocumentText;
+
+    if (['.txt', '.md'].includes(ext)) {
+      result = await extractPlainText(filePath);
+    } else {
+      const imageMime = IMAGE_MIME_TYPES[ext];
+      if (imageMime) {
+        // Images: OCR for text storage + vision attachment for AI
+        const [ocrText, attachment] = await Promise.all([
+          ocrBuffer(await fs.readFile(filePath)),
+          readFileAsAttachment(filePath, imageMime),
+        ]);
+
+        result = {
+          text: cleanAndLimit(ocrText),
+          source: ocrText ? 'ocr' : 'image',
+          ...(attachment ? { attachment } : { warning: 'Image exceeds 10 MB limit for direct AI input.' }),
+        };
+      } else if (ext === '.pdf') {
+        // PDFs: try markitdown first; fall back to page-rendering OCR if sparse
+        const mdResult = await extractWithMarkitdown(filePath);
+
+        if (mdResult.text.length >= SCANNED_PDF_THRESHOLD) {
+          result = mdResult;
+        } else {
+          console.log(`[extract] sparse PDF text (${mdResult.text.length} chars) — attempting OCR`);
+          const ocrText = await extractWithOcrPdf(filePath);
+          if (ocrText) {
+            result = { text: ocrText, source: 'ocr' };
+          } else {
+            result = mdResult.text
+              ? mdResult
+              : { text: '', source: 'error', warning: 'PDF appears to be scanned but OCR could not extract text.' };
+          }
+        }
+      } else {
+        result = await extractWithMarkitdown(filePath);
+      }
     }
 
-    if (['.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm'].includes(ext)) {
-      return extractPlainText(filePath);
-    }
-
-    if (ext === '.docx') return extractDocxText(filePath);
-    if (ext === '.pptx') return extractPptxText(filePath);
-    if (ext === '.xlsx') return extractXlsxText(filePath);
-    if (['.odt', '.ods', '.odp'].includes(ext)) return extractOpenDocumentText(filePath);
-    if (ext === '.rtf') return extractRtfText(filePath);
-
-    if (['.doc', '.xls', '.ppt'].includes(ext)) {
-      return { text: '', source: 'unsupported', warning: `Legacy binary ${ext} files are not supported for text extraction. Save as ${ext}x to enable AI classification from content.` };
-    }
-
-    return { text: '', source: 'unsupported', warning: `Text extraction is not supported for ${ext || 'this file type'}.` };
+    console.log(`[extract] done | ext=${ext} | source=${result.source} | chars=${result.text.length} | hasAttachment=${!!result.attachment}`);
+    return result;
   } catch (err: any) {
-    return {
-      text: '',
-      source: 'error',
-      warning: err instanceof Error ? err.message : 'Text extraction failed.',
-    };
+    const warning = err instanceof Error ? err.message : 'Text extraction failed.';
+    console.error(`[extract] error | ext=${ext} | ${warning}`);
+    return { text: '', source: 'error', warning };
   }
 }

@@ -10,6 +10,7 @@ import { DocumentDetailPage } from '@/pages/DocumentDetailPage';
 import { InboxPage } from '@/pages/InboxPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { DonatePage } from '@/pages/DonatePage';
+import { FavoritesPage } from '@/pages/FavoritesPage';
 
 const App: React.FC = () => {
   return (
@@ -22,6 +23,7 @@ const App: React.FC = () => {
                 <Route index element={<FrontPage />} />
                 <Route path="documents" element={<DocumentsPage />} />
                 <Route path="documents/:id" element={<DocumentDetailPage />} />
+                <Route path="favorites" element={<FavoritesPage />} />
                 <Route path="inbox" element={<InboxPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="donate" element={<DonatePage />} />

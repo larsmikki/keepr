@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button, Input, Select, Surface, useToast } from '@/components/ui';
 import ThemePicker from '@/components/ThemePicker';
+import { SetupWizard } from '@/components/SetupWizard';
 import { api } from '@/api';
 import type { AiSettings, RescanResult, Settings } from '@/types';
 
@@ -14,7 +15,7 @@ function formatSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-type FolderOrg = 'year-month' | 'category-year' | 'year-category' | 'type-year' | 'flat';
+type FolderOrg = 'year-month' | 'flat';
 
 export const SettingsPage: React.FC = () => {
   const { theme } = useTheme();
@@ -25,12 +26,15 @@ export const SettingsPage: React.FC = () => {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<RescanResult | { error: string } | null>(null);
   const [deleteMissing, setDeleteMissing] = useState(false);
+  const [importNew, setImportNew] = useState(true);
   const [settings, setSettings] = useState<AiSettings>({
-    ai_provider: 'openai',
-    ai_model: 'gpt-4o-mini',
+    ai_provider: 'none',
+    ai_openai_model: '',
+    ai_ollama_model: '',
     ai_api_key: '',
-    ai_base_url: 'https://api.openai.com/v1',
-    ai_ollama_url: 'http://localhost:11434',
+    ai_base_url: '',
+    ai_ollama_url: '',
+    ai_temperature: '',
   });
   const [folderOrg, setFolderOrg] = useState<FolderOrg>('year-month');
   const [credentialsSaving, setCredentialsSaving] = useState(false);
@@ -38,6 +42,9 @@ export const SettingsPage: React.FC = () => {
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [detectingModels, setDetectingModels] = useState(false);
   const [ollamaError, setOllamaError] = useState<string | null>(null);
+  const [settingsLoadError, setSettingsLoadError] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const { data: storageStats = null, isLoading: loadingStats } = useQuery({
     queryKey: ['vault-storage-stats'],
     queryFn: api.getStorageStats,
@@ -49,17 +56,21 @@ export const SettingsPage: React.FC = () => {
     if (settings.ai_provider === 'ollama') {
       return {
         ai_provider: 'ollama',
-        ai_model: settings.ai_model || '',
-        ai_ollama_url: settings.ai_ollama_url || 'http://localhost:11434',
+        ai_ollama_model: settings.ai_ollama_model || '',
+        ai_ollama_url: settings.ai_ollama_url || '',
+        ai_temperature: settings.ai_temperature || '',
       };
     }
-
-    return {
-      ai_provider: 'openai',
-      ai_model: settings.ai_model || 'gpt-4o-mini',
-      ai_api_key: settings.ai_api_key,
-      ai_base_url: settings.ai_base_url || 'https://api.openai.com/v1',
-    };
+    if (settings.ai_provider === 'openai') {
+      return {
+        ai_provider: 'openai',
+        ai_openai_model: settings.ai_openai_model || '',
+        ai_api_key: settings.ai_api_key,
+        ai_base_url: settings.ai_base_url || '',
+        ai_temperature: settings.ai_temperature || '',
+      };
+    }
+    return { ai_provider: 'none' };
   };
 
   const autoSave = async (patch: Partial<AiSettings & { folder_organization: FolderOrg }>) => {
@@ -71,33 +82,26 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const detectLocalModels = async (opts: { silent?: boolean; ollamaUrl?: string; model?: string } = {}) => {
+  const detectLocalModels = async (ollamaUrl?: string, silent = false) => {
     setDetectingModels(true);
     setOllamaError(null);
-    const ollamaUrl = (opts.ollamaUrl ?? settings.ai_ollama_url)?.trim();
-    const currentModel = opts.model ?? settings.ai_model;
+    const url = (ollamaUrl ?? settings.ai_ollama_url)?.trim();
     try {
-      const result = await api.getLocalAiModels(ollamaUrl);
-      setLocalModels(result.models);
+      const result = await api.getLocalAiModels(url);
       if (result.error) {
         setOllamaError(result.error);
-        if (!opts.silent) addToast('Ollama detection failed: ' + result.error, 'error');
+        if (!silent) addToast('Ollama detection failed: ' + result.error, 'error');
       } else if (result.models.length === 0) {
-        setOllamaError('Ollama is reachable, but no chat models were found. Run `ollama pull <model>`.');
-        if (!opts.silent) addToast('Ollama is reachable, but no chat models were found', 'info');
+        setLocalModels([]);
+        setOllamaError('No chat models found. Run `ollama pull <model>`.');
+        if (!silent) addToast('No chat models found', 'info');
       } else {
-        const nextModel = result.models.includes(currentModel || '') ? currentModel! : result.models[0];
-        if (nextModel !== settings.ai_model) {
-          setSettings(prev => ({ ...prev, ai_model: nextModel }));
-          autoSave({ ai_provider: 'ollama', ai_ollama_url: ollamaUrl, ai_model: nextModel });
-        } else if (ollamaUrl) {
-          autoSave({ ai_provider: 'ollama', ai_ollama_url: ollamaUrl });
-        }
-        if (!opts.silent) addToast(`Found ${result.models.length} local model${result.models.length === 1 ? '' : 's'}`, 'success');
+        setLocalModels(result.models);
+        if (!silent) addToast(`Found ${result.models.length} local model${result.models.length === 1 ? '' : 's'}`, 'success');
       }
     } catch (err: any) {
       setOllamaError(err.message);
-      if (!opts.silent) addToast('Error: ' + err.message, 'error');
+      if (!silent) addToast('Error: ' + err.message, 'error');
     } finally {
       setDetectingModels(false);
     }
@@ -108,7 +112,15 @@ export const SettingsPage: React.FC = () => {
     api.getSettings().then((data: Settings) => {
       setSettings(prev => ({ ...prev, ...data }));
       if (data.folder_organization) setFolderOrg(data.folder_organization);
-    }).catch(() => {});
+      setSettingsLoaded(true);
+      setSettingsLoadError(false);
+      // Auto-detect models if Ollama is configured, using the URL from DB (not stale state)
+      if (data.ai_provider === 'ollama') {
+        void detectLocalModels(data.ai_ollama_url, true);
+      }
+    }).catch(() => {
+      setSettingsLoadError(true);
+    });
   }, []);
 
   // Auto-save non-credential settings (folder org, provider, model, ollama url).
@@ -117,13 +129,10 @@ export const SettingsPage: React.FC = () => {
     autoSave({ folder_organization: next });
   };
 
-  const updateProvider = (provider: 'openai' | 'ollama') => {
-    const next = { ai_provider: provider, ai_model: settings.ai_model || (provider === 'ollama' ? '' : 'gpt-4o-mini') };
-    setSettings(prev => ({ ...prev, ...next }));
-    autoSave(next);
-    if (provider === 'ollama') {
-      void detectLocalModels({ silent: true });
-    }
+  const updateProvider = (provider: 'none' | 'openai' | 'ollama') => {
+    setSettings(prev => ({ ...prev, ai_provider: provider }));
+    autoSave({ ai_provider: provider });
+    if (provider === 'ollama') void detectLocalModels(settings.ai_ollama_url, true);
   };
 
   // Explicit save for credentials (API key + base URL + model).
@@ -171,7 +180,7 @@ export const SettingsPage: React.FC = () => {
     setScanning(true);
     setScanResult(null);
     try {
-      const data = await api.rescan(deleteMissing);
+      const data = await api.rescan(deleteMissing, importNew);
       setScanResult(data);
     } catch (err: any) {
       setScanResult({ error: err.message });
@@ -182,18 +191,39 @@ export const SettingsPage: React.FC = () => {
 
   const folderOptions: { value: FolderOrg; label: string; example: string }[] = [
     { value: 'year-month', label: 'Year / Month', example: '2026/05/' },
-    { value: 'category-year', label: 'Category / Year', example: 'Finance/2026/' },
-    { value: 'year-category', label: 'Year / Category', example: '2026/Finance/' },
-    { value: 'type-year', label: 'Type / Year', example: 'Receipt/2026/' },
     { value: 'flat', label: 'Flat', example: 'All in one folder' },
   ];
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <div className="mb-8">
-        <h1 className="text-2xl font-extrabold tracking-tight text-text">Settings</h1>
-        <p className="text-sm mt-0.5 text-text2">Configure your vault, AI, and appearance.</p>
+      {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
+
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-text">Settings</h1>
+          <p className="text-sm mt-0.5 text-text2">Configure your vault, AI, and appearance.</p>
+        </div>
+        <Button onClick={() => setShowWizard(true)} size="sm">Setup wizard</Button>
       </div>
+
+      {settingsLoadError && (
+        <div
+          className="p-4 mb-5 rounded-lg flex items-start justify-between gap-4"
+          style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}
+        >
+          <div>
+            <p className="text-sm font-semibold">Server unavailable — could not load your settings.</p>
+            <p className="text-xs mt-0.5" style={{ color: '#b91c1c' }}>What you see below are defaults, not your saved configuration. Do not save while this banner is showing.</p>
+          </div>
+          <button
+            className="text-xs font-semibold underline whitespace-nowrap flex-shrink-0"
+            style={{ color: '#dc2626' }}
+            onClick={() => window.location.reload()}
+          >
+            Reload page
+          </button>
+        </div>
+      )}
 
       {/* Themes */}
       <Surface className="p-6 mb-5">
@@ -235,12 +265,13 @@ export const SettingsPage: React.FC = () => {
         <h2 className="text-base font-bold mb-1 text-text">AI metadata</h2>
         <p className="text-xs mb-5 text-text2">Configure the AI provider used for inbox classification.</p>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {([
-              { value: 'openai', label: 'OpenAI / API', sub: 'OpenAI-compatible endpoint' },
-              { value: 'ollama', label: 'Ollama', sub: 'Local model on your machine' },
+              { value: 'none',   label: 'None',         sub: 'AI disabled',   tip: undefined                                          },
+              { value: 'openai', label: 'OpenAI / API', sub: 'OpenAI-compatible', tip: undefined                                        },
+              { value: 'ollama', label: 'Ollama',       sub: 'Local model',   tip: 'Use a vision model (e.g. qwen3-vl) for images & PDFs' },
             ] as const).map(opt => {
-              const isActive = settings.ai_provider === opt.value;
+              const isActive = settingsLoaded && settings.ai_provider === opt.value;
               return (
                 <button
                   key={opt.value}
@@ -256,12 +287,15 @@ export const SettingsPage: React.FC = () => {
                 >
                   <div className="text-sm font-semibold">{opt.label}</div>
                   <div className="text-xs mt-1" style={{ color: isActive ? theme.accent : theme.text2 }}>{opt.sub}</div>
+                  {opt.tip && (
+                    <div className="text-xs mt-1.5" style={{ color: isActive ? `${theme.accent}99` : theme.text2, opacity: 0.7 }}>{opt.tip}</div>
+                  )}
                 </button>
               );
             })}
           </div>
 
-          {settings.ai_provider === 'openai' ? (
+          {settings.ai_provider === 'openai' && (
             <>
               <div>
                 <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">API key</label>
@@ -294,7 +328,9 @@ export const SettingsPage: React.FC = () => {
                 />
               </div>
             </>
-          ) : (
+          )}
+
+          {settings.ai_provider === 'ollama' && (
             <div className="space-y-3">
               <div>
                 <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Ollama URL</label>
@@ -306,7 +342,7 @@ export const SettingsPage: React.FC = () => {
                     onChange={e => setSettings(prev => ({ ...prev, ai_ollama_url: e.target.value }))}
                     placeholder="http://localhost:11434"
                   />
-                  <Button type="button" onClick={() => detectLocalModels()} disabled={detectingModels}>
+                  <Button type="button" onClick={() => detectLocalModels(settings.ai_ollama_url)} disabled={detectingModels}>
                     {detectingModels ? 'Detecting…' : (localModels.length > 0 ? 'Re-detect' : 'Detect')}
                   </Button>
                 </div>
@@ -315,15 +351,23 @@ export const SettingsPage: React.FC = () => {
                 <div>
                   <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Model</label>
                   <Select
-                    value={settings.ai_model || ''}
+                    value={localModels.includes(settings.ai_ollama_model || '') ? settings.ai_ollama_model || '' : ''}
                     onChange={e => {
                       const v = e.target.value;
-                      setSettings(prev => ({ ...prev, ai_model: v }));
-                      autoSave({ ai_provider: 'ollama', ai_ollama_url: settings.ai_ollama_url, ai_model: v });
+                      setSettings(prev => ({ ...prev, ai_ollama_model: v }));
+                      autoSave({ ai_provider: 'ollama', ai_ollama_url: settings.ai_ollama_url, ai_ollama_model: v });
                     }}
                   >
+                    {!localModels.includes(settings.ai_ollama_model || '') && (
+                      <option value="" disabled>Pick a model…</option>
+                    )}
                     {localModels.map(model => <option key={model} value={model}>{model}</option>)}
                   </Select>
+                  {settings.ai_ollama_model && !localModels.includes(settings.ai_ollama_model) && (
+                    <p className="text-xs mt-1 text-text2">
+                      Saved model <strong>{settings.ai_ollama_model}</strong> not found — pick one above.
+                    </p>
+                  )}
                 </div>
               ) : ollamaError ? (
                 <p className="text-xs text-text2">
@@ -340,21 +384,38 @@ export const SettingsPage: React.FC = () => {
             <div>
               <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">Model</label>
               <Input
-                value={settings.ai_model || ''}
-                onChange={e => setSettings(prev => ({ ...prev, ai_model: e.target.value }))}
+                value={settings.ai_openai_model || ''}
+                onChange={e => setSettings(prev => ({ ...prev, ai_openai_model: e.target.value }))}
                 placeholder="gpt-4o-mini"
               />
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Button variant="primary" onClick={saveCredentials} disabled={credentialsSaving}>
-              {credentialsSaving ? 'Saving…' : 'Save credentials'}
-            </Button>
-            <Button onClick={testAiConnection} disabled={testingConnection}>
-              {testingConnection ? 'Testing…' : 'Test connection'}
-            </Button>
-          </div>
+          {settings.ai_provider !== 'none' && (
+            <div>
+              <label className="block text-xs uppercase tracking-wider font-semibold text-text2 mb-1">
+                Temperature <span className="normal-case font-normal">(optional)</span>
+              </label>
+              <Input
+                type="text"
+                value={settings.ai_temperature || ''}
+                onChange={e => setSettings(prev => ({ ...prev, ai_temperature: e.target.value }))}
+                placeholder="0 to 2 — blank uses model default"
+              />
+              <p className="text-xs mt-1 text-text2">Leave blank for reasoning models (o1, o3, o4) that do not accept a temperature parameter.</p>
+            </div>
+          )}
+
+          {settings.ai_provider !== 'none' && (
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={saveCredentials} disabled={credentialsSaving || settingsLoadError}>
+                {credentialsSaving ? 'Saving…' : 'Save credentials'}
+              </Button>
+              <Button onClick={testAiConnection} disabled={testingConnection || settingsLoadError}>
+                {testingConnection ? 'Testing…' : 'Test connection'}
+              </Button>
+            </div>
+          )}
         </div>
       </Surface>
 
@@ -403,7 +464,16 @@ export const SettingsPage: React.FC = () => {
             <p className="text-xs mt-1 text-text2">Set the VAULT_ROOT environment variable and restart the server to change this.</p>
           </div>
 
-          <div>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                checked={importNew}
+                onChange={e => setImportNew(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Add new files to index
+            </label>
             <label className="flex items-center gap-2 text-sm text-text mb-3">
               <input
                 type="checkbox"
@@ -425,7 +495,7 @@ export const SettingsPage: React.FC = () => {
             >
               {'error' in scanResult ? `Error: ${scanResult.error}` : (
                 <>
-                  {scanResult.newFiles.length > 0 && <div><strong style={{ color: '#16a34a' }}>+ {scanResult.newFiles.length} new file(s)</strong> — on disk but not indexed</div>}
+                  {scanResult.newFiles.length > 0 && <div><strong style={{ color: '#16a34a' }}>+ {scanResult.newFiles.length} new file(s) found on disk</strong>{scanResult.importedNewFiles > 0 ? ` — ${scanResult.importedNewFiles} added to index` : ' — not indexed (enable "Add new files to index")'}</div>}
                   {scanResult.missingFiles.length > 0 && <div><strong style={{ color: '#dc2626' }}>! {scanResult.missingFiles.length} missing file(s)</strong> — indexed but not on disk</div>}
                   {'deletedFromDb' in scanResult && scanResult.deletedFromDb.length > 0 && <div><strong style={{ color: '#dc2626' }}>- {scanResult.deletedFromDb.length} removed from database</strong></div>}
                   {scanResult.checksumMismatches.length > 0 && <div><strong style={{ color: '#f59e0b' }}>! {scanResult.checksumMismatches.length} checksum mismatch(es)</strong> — file contents changed</div>}
@@ -458,32 +528,6 @@ export const SettingsPage: React.FC = () => {
                   <div className="text-xs text-text2">Total size</div>
                 </div>
               </div>
-              {storageStats.byCategory.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wider font-semibold text-text2 mb-2">By category</div>
-                  <div className="space-y-2">
-                    {storageStats.byCategory.slice(0, 5).map(cat => (
-                      <div key={cat.category} className="flex items-center justify-between text-sm">
-                        <span className="text-text">{cat.category}</span>
-                        <span className="text-text2">{cat.count} · {formatSize(cat.size)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {storageStats.byType.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wider font-semibold text-text2 mb-2">By type</div>
-                  <div className="space-y-2">
-                    {storageStats.byType.slice(0, 5).map(t => (
-                      <div key={t.documentType} className="flex items-center justify-between text-sm">
-                        <span className="text-text">{t.documentType}</span>
-                        <span className="text-text2">{t.count} · {formatSize(t.size)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           ) : null}
         </div>

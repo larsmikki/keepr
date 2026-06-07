@@ -6,7 +6,7 @@ import { config } from '../config.js';
 
 let db: SqlJsDatabase | null = null;
 
-const dbPath = path.join(config.vaultRoot, 'vaulty.db');
+const dbPath = path.join(config.vaultRoot, 'data.db');
 
 class Statement {
   constructor(private rawDb: SqlJsDatabase, private sql: string) {}
@@ -96,7 +96,11 @@ export function saveDb(): void {
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  fs.writeFileSync(dbPath, buffer);
+  // Write to a temp file first, then atomically rename — prevents a crash
+  // mid-write from leaving a corrupted database file on disk.
+  const tmpPath = dbPath + '.tmp';
+  fs.writeFileSync(tmpPath, buffer);
+  fs.renameSync(tmpPath, dbPath);
 }
 
 export default dbWrapper;

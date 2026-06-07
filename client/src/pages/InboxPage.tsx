@@ -1,266 +1,166 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDocuments } from '@/contexts/DocumentsContext';
-import { Button, Select, Surface, useToast } from '@/components/ui';
+import { Button, Surface, useToast } from '@/components/ui';
 import { useNavigate } from 'react-router-dom';
 import { getFileIcon } from '@/utils/fileUtils';
-import { CATEGORIES, DOCUMENT_TYPES } from '@/constants';
 import { api } from '@/api';
-import type { AiMetadataSuggestion } from '@/types';
+import { TagInput } from '@/components/TagInput';
+import type { Document } from '@/types';
+
+function parseTags(raw?: string): string[] {
+  if (!raw) return [];
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+}
+
+interface EditState { title: string; tags: string[]; }
+interface LogEntry { type: 'info' | 'success' | 'error' | 'summary'; text: string; }
 
 export const InboxPage: React.FC = () => {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const { docs, updateDocument } = useDocuments();
   const { addToast } = useToast();
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [savingType, setSavingType] = useState<'category' | 'documentType'>('category');
+  const { data: aiSettings } = useQuery({ queryKey: ['settings'], queryFn: api.getSettings });
+  const { data: allTags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags });
+  const aiConfigured = !!aiSettings?.ai_provider && aiSettings.ai_provider !== 'none';
   const [aiSuggestingId, setAiSuggestingId] = useState<string | null>(null);
-  const [aiSuggestions, setAiSuggestions] = useState<Record<string, AiMetadataSuggestion>>({});
-  const [sortBy, setSortBy] = useState<'createdAt' | 'title'>('createdAt');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAiLoading, setBulkAiLoading] = useState(false);
-  const [bulkApplyLoading, setBulkApplyLoading] = useState(false);
-  const [autoFiling, setAutoFiling] = useState(false);
-  const [autoFileProgress, setAutoFileProgress] = useState<{ done: number; total: number } | null>(null);
+  const [aiErrors, setAiErrors] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [editStates, setEditStates] = useState<Record<string, EditState>>({});
+  const [suggestingAll, setSuggestingAll] = useState(false);
+  const [suggestAllLog, setSuggestAllLog] = useState<LogEntry[]>([]);
+  const [suggestProgress, setSuggestProgress] = useState<{ done: number; total: number } | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
   const inboxDocs = useMemo(() => {
-    const filtered = docs.filter((d) => !d.category || !d.documentType || d.documentType === 'Unspecified');
-    return [...filtered].sort((a, b) => {
-      if (sortBy === 'title') {
-        const cmp = (a.title || '').localeCompare(b.title || '');
-        return sortDir === 'asc' ? cmp : -cmp;
-      }
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return sortDir === 'asc' ? dateA - dateB : dateB - dateA;
-    });
-  }, [docs, sortBy, sortDir]);
+    const filtered = docs.filter(d => parseTags(d.tags).length === 0);
+    return [...filtered].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [docs]);
 
-  const handleQuickUpdate = async (id: string, field: 'category' | 'documentType', value: string) => {
-    if (!value) return;
-    setSavingId(id);
-    setSavingType(field);
-    try {
-      await updateDocument(id, { [field]: value });
-      setAiSuggestions(prev => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      addToast(field === 'category' ? 'Filed' : 'Type updated', 'success');
-    } catch (err: any) {
-      addToast('Failed to update: ' + (err.message || err), 'error');
-    } finally {
-      setSavingId(null);
-      setSavingType('category');
-    }
+  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [suggestAllLog]);
+
+  const appendLog = (entry: LogEntry) => setSuggestAllLog(prev => [...prev, entry]);
+
+  const getEditState = (doc: Document): EditState =>
+    editStates[doc.id] ?? { title: doc.title || '', tags: parseTags(doc.tags) };
+
+  const setField = (id: string, patch: Partial<EditState>, doc: Document) => {
+    setEditStates(prev => ({ ...prev, [id]: { ...getEditState(doc), ...prev[id], ...patch } }));
   };
 
-  const handleAiSuggest = async (id: string) => {
-    setAiSuggestingId(id);
+  const handleAiSuggest = async (doc: Document) => {
+    setAiSuggestingId(doc.id);
+    setAiErrors(prev => { const n = { ...prev }; delete n[doc.id]; return n; });
     try {
-      const suggestion = await api.suggestDocumentMetadataWithAi(id);
-      setAiSuggestions(prev => ({ ...prev, [id]: suggestion }));
-      addToast('AI suggestion ready', 'success');
+      const suggestion = await api.suggestDocumentMetadataWithAi(doc.id);
+      setEditStates(prev => {
+        const current = prev[doc.id] ?? { title: doc.title || '', tags: parseTags(doc.tags) };
+        return { ...prev, [doc.id]: { title: suggestion.title || current.title, tags: suggestion.tags?.length ? suggestion.tags : current.tags } };
+      });
+      const parts: string[] = [];
+      if (suggestion.title) parts.push(`Title: "${suggestion.title}"`);
+      if (suggestion.tags?.length) parts.push(`Tags: ${suggestion.tags.join(', ')}`);
+      addToast(parts.length > 0 ? parts.join(' · ') : 'AI returned no suggestions', parts.length > 0 ? 'success' : 'info');
     } catch (err: any) {
-      addToast(err.message || 'AI suggestion failed', 'error');
+      setAiErrors(prev => ({ ...prev, [doc.id]: err.message || 'AI suggestion failed' }));
     } finally {
       setAiSuggestingId(null);
     }
   };
 
-  const handleApplyAiSuggestion = async (id: string) => {
-    const suggestion = aiSuggestions[id];
-    if (!suggestion) return;
-    setSavingId(id);
-    setSavingType('category');
+  const handleSave = async (doc: Document) => {
+    const state = getEditState(doc);
+    setSavingId(doc.id);
     try {
-      await updateDocument(id, {
-        category: suggestion.category,
-        documentType: suggestion.documentType,
-      });
-      setAiSuggestions(prev => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      addToast('AI suggestion applied', 'success');
+      await updateDocument(doc.id, { title: state.title, tags: JSON.stringify(state.tags) });
+      setEditStates(prev => { const n = { ...prev }; delete n[doc.id]; return n; });
+      addToast('Saved', 'success');
     } catch (err: any) {
-      addToast('Failed to apply AI suggestion: ' + (err.message || err), 'error');
-    } finally {
-      setSavingId(null);
-    }
+      addToast('Failed to save: ' + (err.message || err), 'error');
+    } finally { setSavingId(null); }
   };
 
-  const handleBulkAiSuggest = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkAiLoading(true);
-    try {
-      const ids = Array.from(selectedIds);
-      const result = await api.bulkSuggestMetadataWithAi(ids);
-      const newSuggestions: Record<string, AiMetadataSuggestion> = {};
-      let successCount = 0;
-      for (const r of result.results) {
-        if (r.success && r.suggestion) {
-          newSuggestions[r.id] = r.suggestion;
-          successCount++;
-        }
-      }
-      setAiSuggestions(prev => ({ ...prev, ...newSuggestions }));
-      addToast(`AI suggestions ready for ${successCount} document${successCount === 1 ? '' : 's'}`, 'success');
-    } catch (err: any) {
-      addToast(err.message || 'Bulk AI failed', 'error');
-    } finally {
-      setBulkAiLoading(false);
-    }
-  };
+  const handleSuggestAllWithAi = async () => {
+    if (!inboxDocs.length) return;
+    const docsToSuggest = [...inboxDocs];
+    setSuggestingAll(true);
+    setSuggestAllLog([{ type: 'info', text: `Suggesting metadata for ${docsToSuggest.length} document${docsToSuggest.length === 1 ? '' : 's'}…` }]);
+    setSuggestProgress({ done: 0, total: docsToSuggest.length });
 
-  const handleApplyAllSuggestions = async () => {
-    const docsWithSuggestions = inboxDocs.filter(d => aiSuggestions[d.id]);
-    if (docsWithSuggestions.length === 0) return;
-    setBulkApplyLoading(true);
-    let successCount = 0;
-    let failCount = 0;
-    for (const doc of docsWithSuggestions) {
-      const suggestion = aiSuggestions[doc.id];
+    let ok = 0, fail = 0;
+    for (let i = 0; i < docsToSuggest.length; i++) {
+      const doc = docsToSuggest[i];
+      setSuggestProgress({ done: i, total: docsToSuggest.length });
       try {
-        await updateDocument(doc.id, {
-          category: suggestion.category,
-          documentType: suggestion.documentType,
+        const suggestion = await api.suggestDocumentMetadataWithAi(doc.id);
+        setEditStates(prev => {
+          const current = prev[doc.id] ?? { title: doc.title || '', tags: parseTags(doc.tags) };
+          return { ...prev, [doc.id]: { title: suggestion.title || current.title, tags: suggestion.tags?.length ? suggestion.tags : current.tags } };
         });
-        successCount++;
-      } catch {
-        failCount++;
+        ok++;
+        appendLog({ type: 'success', text: `${suggestion.title || doc.title || doc.id}  [${suggestion.tags?.join(', ') || '—'}]` });
+      } catch (err: any) {
+        fail++;
+        setAiErrors(prev => ({ ...prev, [doc.id]: err.message || 'AI suggestion failed' }));
+        appendLog({ type: 'error', text: `${doc.title || doc.id} — ${err.message || 'failed'}` });
       }
     }
-    if (successCount > 0) {
-      setAiSuggestions({});
-      addToast(`Applied ${successCount} suggestion${successCount === 1 ? '' : 's'}${failCount > 0 ? `, ${failCount} failed` : ''}`, failCount > 0 ? 'error' : 'success');
-    } else {
-      addToast('Failed to apply suggestions', 'error');
-    }
-    setBulkApplyLoading(false);
+
+    setSuggestProgress({ done: docsToSuggest.length, total: docsToSuggest.length });
+    appendLog({ type: 'summary', text: fail === 0 ? `Done — ${ok} suggestion${ok === 1 ? '' : 's'} ready.` : `Done — ${ok} suggested, ${fail} failed.` });
+    setSuggestingAll(false);
   };
 
-  const handleAutoFileAllWithAi = async () => {
-    if (inboxDocs.length === 0) return;
-    const batchSize = 10;
-    const docsToFile = [...inboxDocs];
-    setAutoFiling(true);
-    setAutoFileProgress({ done: 0, total: docsToFile.length });
-    try {
-      let successCount = 0;
-      let failCount = 0;
-      const remainingSuggestions: Record<string, AiMetadataSuggestion> = {};
-
-      for (let i = 0; i < docsToFile.length; i += batchSize) {
-        const batch = docsToFile.slice(i, i + batchSize);
-        const result = await api.bulkSuggestMetadataWithAi(batch.map(doc => doc.id));
-
-        for (const item of result.results) {
-          if (!item.success || !item.suggestion) {
-            failCount++;
-            continue;
-          }
-
-          try {
-            await updateDocument(item.id, {
-              category: item.suggestion.category,
-              documentType: item.suggestion.documentType,
-            });
-            successCount++;
-          } catch {
-            failCount++;
-            remainingSuggestions[item.id] = item.suggestion;
-          }
-        }
-
-        setAutoFileProgress({ done: Math.min(i + batch.length, docsToFile.length), total: docsToFile.length });
-      }
-
-      setAiSuggestions(remainingSuggestions);
-      setSelectedIds(new Set());
-      addToast(
-        `Auto-filed ${successCount} document${successCount === 1 ? '' : 's'}${failCount > 0 ? `, ${failCount} failed` : ''}`,
-        failCount > 0 ? 'error' : 'success'
-      );
-    } catch (err: any) {
-      addToast(err.message || 'Auto-file with AI failed', 'error');
-    } finally {
-      setAutoFiling(false);
-      setAutoFileProgress(null);
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedIds(newSet);
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === inboxDocs.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(inboxDocs.map(d => d.id)));
-    }
+  const logColor = (type: LogEntry['type']): string => {
+    if (type === 'success') return '#16a34a';
+    if (type === 'error') return '#dc2626';
+    if (type === 'summary') return theme.accent;
+    return theme.text2;
   };
 
   return (
     <div className="max-w-6xl mx-auto w-full">
-      <div className="flex justify-between items-end mb-8">
+      <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-text">Inbox</h1>
-          <p className="text-sm mt-0.5 text-text2">Documents with no category or type.</p>
+          <p className="text-sm mt-0.5 text-text2">Documents with no tags.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text2">Sort by</span>
-          <Select
-            className="!w-auto !py-1.5"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'createdAt' | 'title')}
-          >
-            <option value="createdAt">Date added</option>
-            <option value="title">Title</option>
-          </Select>
-          <Button
-            size="sm"
-            onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-            title={sortDir === 'asc' ? 'Oldest first' : 'Newest first'}
-          >
-            {sortDir === 'asc' ? '↑' : '↓'}
+        {inboxDocs.length > 0 && (
+          <Button variant="primary" size="sm" onClick={handleSuggestAllWithAi} disabled={suggestingAll || !aiConfigured}
+            title={!aiConfigured ? 'Configure an AI provider in Settings first' : undefined}>
+            {suggestingAll ? 'Suggesting…' : 'Suggest with AI for All'}
           </Button>
-        </div>
+        )}
       </div>
 
-      {inboxDocs.length > 0 && (
-        <Surface className="p-4 mb-5 flex items-center justify-between">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="rounded"
-              checked={selectedIds.size === inboxDocs.length && inboxDocs.length > 0}
-              onChange={toggleSelectAll}
-            />
-            <span className="text-base font-bold text-text">{selectedIds.size} selected</span>
-          </label>
-          <div className="flex items-center gap-2">
-            <Button variant="primary" size="sm" onClick={handleAutoFileAllWithAi} disabled={autoFiling || bulkAiLoading || bulkApplyLoading}>
-              {autoFiling && autoFileProgress
-                ? `Auto-filing ${autoFileProgress.done}/${autoFileProgress.total}`
-                : 'Auto-file all with AI'}
-            </Button>
-            {Object.keys(aiSuggestions).length > 0 && (
-              <Button variant="primary" size="sm" onClick={handleApplyAllSuggestions} disabled={bulkApplyLoading}>
-                {bulkApplyLoading ? 'Applying…' : `Apply all (${Object.keys(aiSuggestions).length})`}
-              </Button>
+      {/* Progress panel */}
+      {suggestProgress !== null && (
+        <Surface className="p-4 mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-text">
+              {suggestingAll ? `Processing ${suggestProgress.done + 1} of ${suggestProgress.total}…` : 'AI suggestions ready'}
+            </span>
+            {!suggestingAll && (
+              <button onClick={() => { setSuggestAllLog([]); setSuggestProgress(null); }} className="text-xs text-text2 hover:text-text">Dismiss</button>
             )}
-            <Button size="sm" onClick={handleBulkAiSuggest} disabled={bulkAiLoading || autoFiling || selectedIds.size === 0}>
-              {bulkAiLoading ? 'Analyzing…' : 'AI suggest'}
-            </Button>
+          </div>
+          {/* Progress bar */}
+          <div className="h-1.5 rounded-full mb-3" style={{ background: theme.surface2 }}>
+            <div
+              className="h-1.5 rounded-full transition-all duration-300"
+              style={{ width: `${suggestProgress.total > 0 ? (suggestProgress.done / suggestProgress.total) * 100 : 0}%`, background: theme.accent }}
+            />
+          </div>
+          <div className="rounded-lg p-3 font-mono text-xs overflow-y-auto max-h-44 flex flex-col gap-0.5" style={{ background: theme.surface2 }}>
+            {suggestAllLog.map((entry, i) => (
+              <div key={i} style={{ color: logColor(entry.type) }}>
+                {entry.type === 'success' ? '✓ ' : entry.type === 'error' ? '✗ ' : '  '}{entry.text}
+              </div>
+            ))}
+            {suggestingAll && <div style={{ color: theme.text2 }} className="animate-pulse">…</div>}
+            <div ref={logEndRef} />
           </div>
         </Surface>
       )}
@@ -268,104 +168,59 @@ export const InboxPage: React.FC = () => {
       {inboxDocs.length === 0 ? (
         <Surface className="p-6 mb-5 text-center py-20">
           <h2 className="text-base font-bold mb-1 text-text">Your inbox is empty</h2>
-          <p className="text-xs text-text2">All your documents are organized.</p>
+          <p className="text-xs text-text2">All your documents have tags.</p>
         </Surface>
       ) : (
         <Surface className="p-6 mb-5">
-          <h2 className="text-base font-bold mb-1 text-text">Unsorted documents</h2>
+          <h2 className="text-base font-bold mb-1 text-text">Untagged documents</h2>
           <p className="text-xs mb-5 text-text2">
-            You have {inboxDocs.length} document{inboxDocs.length === 1 ? '' : 's'} to organize. Pick values manually, or ask AI to preselect a category and type.
+            {inboxDocs.length} document{inboxDocs.length === 1 ? '' : 's'} without tags. Edit title and tags below, or use AI to suggest them.
           </p>
           <div className="grid grid-cols-1 gap-3">
             {inboxDocs.map(doc => {
               const isSaving = savingId === doc.id;
-              const aiSuggestion = aiSuggestions[doc.id];
               const isAiSuggesting = aiSuggestingId === doc.id;
+              const aiError = aiErrors[doc.id];
+              const state = getEditState(doc);
               return (
-                <div
-                  key={doc.id}
-                  className="flex items-center justify-between p-4 rounded-xl"
-                  style={{ background: theme.surface2, border: `1px solid ${theme.border}` }}
-                >
-                  <input
-                    type="checkbox"
-                    className="rounded mr-3"
-                    checked={selectedIds.has(doc.id)}
-                    onChange={() => toggleSelect(doc.id)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div
-                    className="flex items-center gap-4 min-w-0 flex-1 cursor-pointer"
-                    onClick={() => navigate(`/documents/${doc.id}`)}
-                  >
-                    <div
-                      className="w-10 h-10 rounded flex items-center justify-center text-lg flex-shrink-0"
-                      style={{ background: theme.surface, border: `1px solid ${theme.border}` }}
-                      aria-hidden="true"
-                    >
-                      {getFileIcon(doc.storedFilename)}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-medium truncate text-text">{doc.title}</div>
-                      <div className="text-xs text-text2">
-                        Added {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : 'unknown'}
-                        {aiSuggestion?.reason ? ` · ${aiSuggestion.reason}` : ''}
-                      </div>
-                    </div>
+                <div key={doc.id} className="flex items-start gap-3 p-4 rounded-xl" style={{ background: theme.surface2, border: `1px solid ${theme.border}` }}>
+                  <div className="w-10 h-10 rounded flex items-center justify-center text-lg flex-shrink-0 mt-1" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
+                    {getFileIcon(doc.storedFilename)}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                    <Select
-                      className="!w-auto !py-1.5 text-xs"
-                      value={aiSuggestion?.category || ''}
-                      disabled={isSaving || isAiSuggesting}
-                      onChange={(e) => handleQuickUpdate(doc.id, 'category', e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={`Category for ${doc.title}`}
+                  <div className="flex-1 min-w-0 flex flex-col gap-2">
+                    <input
+                      type="text"
+                      value={state.title}
+                      onChange={e => setField(doc.id, { title: e.target.value }, doc)}
+                      disabled={isSaving}
+                      placeholder="Document title…"
+                      className="w-full px-2.5 py-1.5 rounded-lg text-sm font-medium text-text bg-transparent outline-none border placeholder:text-text2 focus:ring-1"
+                      style={{ borderColor: theme.border, background: theme.surface }}
+                    />
+                    <TagInput
+                      tags={state.tags}
+                      onChange={tags => setField(doc.id, { tags }, doc)}
+                      suggestions={allTags}
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                    <button
+                      disabled={isSaving || isAiSuggesting || !aiConfigured}
+                      onClick={() => handleAiSuggest(doc)}
+                      title={!aiConfigured ? 'Configure an AI provider in Settings first' : undefined}
+                      className="text-xs font-semibold flex items-center gap-1 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-70 disabled:opacity-40"
+                      style={{ background: `${theme.accent}18`, color: theme.accent, border: `1px solid ${theme.accent}35` }}
                     >
-                      <option value="" disabled>
-                        {isSaving && savingType !== 'documentType' ? 'Saving…' : 'Category'}
-                      </option>
-                      {CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </Select>
-                    <Select
-                      className="!w-auto !py-1.5 text-xs"
-                      value={aiSuggestion?.documentType || ''}
-                      disabled={isSaving || isAiSuggesting}
-                      onChange={(e) => handleQuickUpdate(doc.id, 'documentType', e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={`Type for ${doc.title}`}
-                    >
-                      <option value="" disabled>
-                        {isSaving && savingType !== 'category' ? 'Saving…' : 'Type'}
-                      </option>
-                      {DOCUMENT_TYPES.map((type) => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </Select>
-                    {aiSuggestion ? (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        disabled={isSaving}
-                        onClick={(e) => { e.stopPropagation(); handleApplyAiSuggestion(doc.id); }}
-                        title={aiSuggestion.reason}
-                      >
-                        Apply AI
+                      {isAiSuggesting ? 'Analyzing…' : <><span>✦</span><span>Suggest with AI</span></>}
+                    </button>
+                    {aiError && <p className="text-xs max-w-[200px] text-right leading-snug break-words" style={{ color: '#dc2626' }} title={aiError}>{aiError}</p>}
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => navigate(`/documents/${doc.id}`)} className="text-xs text-text2 hover:text-text px-1" title="Open document">↗</button>
+                      <Button variant="primary" size="sm" disabled={isSaving || isAiSuggesting} onClick={() => handleSave(doc)}>
+                        {isSaving ? 'Saving…' : 'Save'}
                       </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={isSaving || isAiSuggesting}
-                        onClick={(e) => { e.stopPropagation(); handleAiSuggest(doc.id); }}
-                      >
-                        {isAiSuggesting ? 'Thinking…' : 'Suggest'}
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/documents/${doc.id}`)}>
-                      Edit
-                    </Button>
+                    </div>
                   </div>
                 </div>
               );
