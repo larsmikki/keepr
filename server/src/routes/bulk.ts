@@ -24,7 +24,7 @@ const BulkUpdateSchema = z.object({
   }).strict(),
 });
 
-router.delete('/bulk', async (req, res) => {
+router.delete('/', async (req, res) => {
   try {
     const parsed = BulkIdsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'A list of document IDs is required' });
@@ -50,7 +50,7 @@ router.delete('/bulk', async (req, res) => {
   }
 });
 
-router.patch('/bulk', async (req, res) => {
+router.patch('/', async (req, res) => {
   try {
     const parsed = BulkUpdateSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -1,6 +1,6 @@
 {
-  "name": "Document Vault",
-  "short_name": "Document Vault",
+  "name": "Documentr",
+  "short_name": "Documentr",
   "description": "Document management app",
   "start_url": "/",
   "display": "standalone",

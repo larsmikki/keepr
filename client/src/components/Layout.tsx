@@ -33,7 +33,7 @@ const StarIcon = () => (
   </svg>
 )
 const LogoMark = () => (
-  <img src="/favicon.svg" width={28} height={28} alt="Document Vault" className="shrink-0" />
+  <img src="/favicon.svg" width={28} height={28} alt="Documentr" className="shrink-0" />
 )
 
 // Broadcast channel for global shortcut events that pages can listen to
@@ -158,7 +158,7 @@ export default function Layout() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group" style={{ textDecoration: 'none' }}>
             <LogoMark />
-            <span className="text-xl font-extrabold tracking-tight gradient-text select-none">Document Vault</span>
+            <span className="text-xl font-extrabold tracking-tight gradient-text select-none">Documentr</span>
           </Link>
 
           <nav className="flex items-center gap-0.5">

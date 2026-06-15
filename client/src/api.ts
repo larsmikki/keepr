@@ -11,7 +11,7 @@ async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
     });
   } catch (err: any) {
     if (err?.name === 'AbortError') throw new Error('Request timed out');
-    throw new Error(`Could not reach the Vaulty server at ${window.location.origin} — it may have crashed or restarted`);
+    throw new Error(`Could not reach the Documentr server at ${window.location.origin} — it may have crashed or restarted`);
   }
   if (!res.ok) {
     const text = await res.text();
@@ -158,15 +158,15 @@ export const api = {
     window.URL.revokeObjectURL(url);
   },
 
-  exportBatchDocuments: async (ids: string[]) => {
+  exportBatchDocuments: async (ids: string[], includeSidecars = true) => {
     const res = await fetch(`${BASE}/export/batch`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, includeSidecars }),
     });
     if (!res.ok) throw new Error(await res.text());
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `vaulty-export-${new Date().toISOString().split('T')[0]}.zip`;
+    a.href = url; a.download = `documentr-export-${new Date().toISOString().split('T')[0]}.zip`;
     document.body.appendChild(a); a.click(); a.remove();
     window.URL.revokeObjectURL(url);
   },
@@ -177,7 +177,7 @@ export const api = {
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `vaulty-index-${new Date().toISOString().split('T')[0]}.csv`;
+    a.href = url; a.download = `documentr-index-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     window.URL.revokeObjectURL(url);
   },

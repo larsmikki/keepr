@@ -25,7 +25,7 @@ async function main() {
 
   const app = createApp();
   app.listen(config.port, () => {
-    console.log(`Document Vault server running on http://localhost:${config.port}`);
+    console.log(`Documentr server running on http://localhost:${config.port}`);
   });
 }
 

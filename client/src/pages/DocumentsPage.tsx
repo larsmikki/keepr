@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api';
 import type { Document, PaginatedResponse } from '@/types';
+import { documentsQueryKey } from '@/contexts/DocumentsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button, ConfirmDialog, Input, Select, useToast } from '@/components/ui';
 import { UploadModal } from '@/components/UploadModal';
@@ -48,6 +49,7 @@ export const DocumentsPage: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Wire up global keyboard shortcuts
@@ -71,7 +73,10 @@ export const DocumentsPage: React.FC = () => {
 
   const docs = documentData?.docs ?? EMPTY_DOCS;
   const totalDocs = documentData?.total ?? 0;
-  const refreshDocuments = () => queryClient.invalidateQueries({ queryKey: ['documents-page'] });
+  const refreshDocuments = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['documents-page'] }),
+    queryClient.invalidateQueries({ queryKey: documentsQueryKey }),
+  ]);
 
   const visibleIds = useMemo(() => docs.map(doc => doc.id), [docs]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
@@ -110,6 +115,17 @@ export const DocumentsPage: React.FC = () => {
       setBulkDeleteOpen(false);
       void refreshDocuments();
     } catch (err) { addToast('Bulk delete failed: ' + err, 'error'); }
+  };
+
+  const downloadSelectedDocuments = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || downloading) return;
+    setDownloading(true);
+    try {
+      await api.exportBatchDocuments(ids, false);
+      addToast(`${ids.length} document${ids.length === 1 ? '' : 's'} downloaded`, 'success');
+    } catch (err) { addToast('Download failed: ' + err, 'error'); }
+    finally { setDownloading(false); }
   };
 
   const sortButton = (field: SortField, label: React.ReactNode) => (
@@ -159,6 +175,9 @@ export const DocumentsPage: React.FC = () => {
           <span className="text-sm font-medium text-text">{selectedIds.size} selected</span>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+            <Button size="sm" disabled={downloading} onClick={() => void downloadSelectedDocuments()}>
+              {downloading ? 'Preparing…' : 'Download selected'}
+            </Button>
             <Button size="sm" variant="danger" onClick={() => setBulkDeleteOpen(true)}>Delete selected</Button>
           </div>
         </div>
@@ -174,7 +193,6 @@ export const DocumentsPage: React.FC = () => {
                 </th>
                 <th className="px-4 py-3">{sortButton('title', 'Title')}</th>
                 <th className="px-4 py-3 hidden md:table-cell">{sortButton('documentDate', 'Date')}</th>
-                <th className="px-4 py-3 hidden lg:table-cell">{sortButton('fileSize', 'Size')}</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
@@ -217,7 +235,6 @@ export const DocumentsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-text2 hidden md:table-cell">{doc.documentDate || '-'}</td>
-                    <td className="px-4 py-3 text-text2 hidden lg:table-cell">{formatSize(doc.fileSize)}</td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <button
                         type="button"

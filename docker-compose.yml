@@ -1,7 +1,7 @@
 services:
-  document-vault:
-    image: larsmikki/document-vault:latest
-    container_name: document-vault
+  documentr:
+    image: larsmikki/documentr:latest
+    container_name: documentr
     ports:
       - "3110:3110"
     environment:

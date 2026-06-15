@@ -1,25 +1,25 @@
-# Document Vault
+﻿# Documentr
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fdocument--vault-blue?logo=docker)](https://hub.docker.com/r/larsmikki/document-vault)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fdocumentr-blue?logo=docker)](https://hub.docker.com/r/larsmikki/documentr)
 [![Node 20](https://img.shields.io/badge/Node-20-brightgreen?logo=node.js)](https://nodejs.org/)
 
-**Document Vault** is a self-hosted personal document vault. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search — no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Document Vault can rebuild its index from the sidecars.
+**Documentr** is a self-hosted personal Documentr. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search â€” no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Documentr can rebuild its index from the sidecars.
 
 ## Features
 
-- **Files-on-disk storage** — documents live at `vault/documents/{year}/{month}/{safe_filename}`, exactly where you can read them yourself
-- **Sidecar metadata** — every file has a `.sidecar.json` next to it so the DB can be rebuilt from disk at any time
-- **Full-text search** — across titles, descriptions, vendors, tags, and notes
-- **Rich metadata** — categories, document types, vendor, amounts, dates, tags, people, assets, reminders
-- **Inbox** — unsorted uploads land in an inbox until you file them
-- **Rescan** — detects new, missing, moved, or duplicate files between disk and DB
-- **Bulk operations** — categorize, tag, or delete multiple documents at once
-- **Reminders** — expiry and reminder dates for warranties, contracts, IDs, etc.
-- **Import / export** — backup as a single archive, restore on any machine
-- **SHA256 checksums** — duplicate detection on upload and import
-- **Themes** — light and dark
-- **No accounts, no telemetry** — your data stays on your machine
+- **Files-on-disk storage** â€” documents live at `vault/documents/{year}/{month}/{safe_filename}`, exactly where you can read them yourself
+- **Sidecar metadata** â€” every file has a `.sidecar.json` next to it so the DB can be rebuilt from disk at any time
+- **Full-text search** â€” across titles, descriptions, vendors, tags, and notes
+- **Rich metadata** â€” categories, document types, vendor, amounts, dates, tags, people, assets, reminders
+- **Inbox** â€” unsorted uploads land in an inbox until you file them
+- **Rescan** â€” detects new, missing, moved, or duplicate files between disk and DB
+- **Bulk operations** â€” categorize, tag, or delete multiple documents at once
+- **Reminders** â€” expiry and reminder dates for warranties, contracts, IDs, etc.
+- **Import / export** â€” backup as a single archive, restore on any machine
+- **SHA256 checksums** â€” duplicate detection on upload and import
+- **Themes** â€” light and dark
+- **No accounts, no telemetry** â€” your data stays on your machine
 
 ## Getting started
 
@@ -31,30 +31,30 @@ Works on Synology, Unraid, TrueNAS, QNAP, Proxmox, or a plain Docker host.
 
 ```bash
 docker run -d \
-  --name document-vault \
+  --name documentr \
   -p 3110:3110 \
-  -v document-vault_data:/app/vault \
+  -v documentr_data:/app/vault \
   --restart unless-stopped \
-  larsmikki/document-vault:latest
+  larsmikki/documentr:latest
 ```
 
 Or with Compose:
 
 ```yaml
 services:
-  document-vault:
-    image: larsmikki/document-vault:latest
-    container_name: document-vault
+  documentr:
+    image: larsmikki/documentr:latest
+    container_name: documentr
     ports:
       - "3110:3110"
     environment:
       - PORT=3110
     volumes:
-      - document-vault_data:/app/vault
+      - documentr_data:/app/vault
     restart: unless-stopped
 
 volumes:
-  document-vault_data:
+  documentr_data:
 ```
 
 To keep the vault on a host folder you can browse directly (recommended), bind-mount instead of using a named volume:
@@ -69,8 +69,8 @@ volumes:
 Requires [Git for Windows](https://git-scm.com/download/win) and [Node.js 20+](https://nodejs.org/).
 
 ```powershell
-git clone https://github.com/larsmikki/document-vault.git
-cd document-vault
+git clone https://github.com/larsmikki/documentr.git
+cd documentr
 npm install
 npm run dev
 ```
@@ -86,8 +86,8 @@ npm start
 
 ```bash
 brew install node git
-git clone https://github.com/larsmikki/document-vault.git
-cd document-vault
+git clone https://github.com/larsmikki/documentr.git
+cd documentr
 npm install
 npm run dev
 ```
@@ -102,8 +102,8 @@ Debian/Ubuntu:
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs git
 
-git clone https://github.com/larsmikki/document-vault.git
-cd document-vault
+git clone https://github.com/larsmikki/documentr.git
+cd documentr
 npm install
 npm run dev
 ```
@@ -131,20 +131,20 @@ vault/
         2026-05-21_acme_invoice_receipt.pdf.sidecar.json
 ```
 
-The `.sidecar.json` files are the source of truth — if the database is lost, run **Settings → Rescan** to rebuild it from the files on disk.
+The `.sidecar.json` files are the source of truth â€” if the database is lost, run **Settings â†’ Rescan** to rebuild it from the files on disk.
 
 ## Usage
 
 | Action | How |
 |--------|-----|
 | Upload a document | Click **Upload** and drop a file |
-| Edit metadata | Open a document → edit fields inline |
-| File from inbox | Open **Inbox** → assign category and metadata |
-| Bulk update | Select multiple cards → toolbar appears |
-| Find missing/moved files | **Settings → Rescan** |
-| Backup | **Settings → Export** |
-| Restore | **Settings → Import** |
-| Change theme | **Settings → Themes** |
+| Edit metadata | Open a document â†’ edit fields inline |
+| File from inbox | Open **Inbox** â†’ assign category and metadata |
+| Bulk update | Select multiple cards â†’ toolbar appears |
+| Find missing/moved files | **Settings â†’ Rescan** |
+| Backup | **Settings â†’ Export** |
+| Restore | **Settings â†’ Import** |
+| Change theme | **Settings â†’ Themes** |
 
 ## Tests
 
@@ -158,4 +158,5 @@ npm test
 
 ## Support
 
-If Document Vault saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.
+If Documentr saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.
+

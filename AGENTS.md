@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-Document Vault is a self-hosted personal document vault — a full-stack TypeScript monorepo (React + Express) that stores files as real files on disk with portable `.sidecar.json` sidecar metadata and an indexed SQLite database for search.
+Documentr is a self-hosted personal document vault — a full-stack TypeScript monorepo (React + Express) that stores files as real files on disk with portable `.sidecar.json` sidecar metadata and an indexed SQLite database for search.
 
 ## Commands
 
@@ -31,7 +31,7 @@ Dev servers: client at `localhost:3110`, API at `localhost:3111`. The Vite dev s
 
 ## Architecture
 
-**Core principle**: files remain real files on disk; Document Vault adds metadata structure around them.
+**Core principle**: files remain real files on disk; Documentr adds metadata structure around them.
 
 ### Storage model
 Every document has three representations that must stay in sync:

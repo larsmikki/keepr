@@ -38,7 +38,7 @@ router.get('/download/:id', (req, res) => {
 // Streaming ZIP export — avoids loading all files into memory at once
 router.post('/batch', async (req, res) => {
   try {
-    const { ids } = req.body as { ids: string[] };
+    const { ids, includeSidecars = true } = req.body as { ids: string[]; includeSidecars?: boolean };
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: 'No document IDs provided' });
     }
@@ -54,7 +54,7 @@ router.post('/batch', async (req, res) => {
         const fileStream = fs.createReadStream(doc.filePath);
         const filename = doc.originalFilename || doc.storedFilename || `document-${id}`;
         zip.file(filename, fileStream);
-        zip.file(`${filename}.sidecar.json`, JSON.stringify(buildSidecar(doc), null, 2));
+        if (includeSidecars) zip.file(`${filename}.sidecar.json`, JSON.stringify(buildSidecar(doc), null, 2));
       } catch (err: any) {
         errors.push(`Failed to read ${doc.title}: ${err.message}`);
       }
@@ -63,7 +63,7 @@ router.post('/batch', async (req, res) => {
     const date = new Date().toISOString().split('T')[0];
     res.set({
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="document-vault-export-${date}.zip"`,
+      'Content-Disposition': `attachment; filename="documentr-export-${date}.zip"`,
     });
 
     // Pipe the ZIP stream directly to the response — no full buffer in memory
@@ -99,7 +99,7 @@ router.get('/csv', (req, res) => {
     const csv = [headers.join(','), ...rows].join('\n');
     res.set({
       'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="document-vault-index-${new Date().toISOString().split('T')[0]}.csv"`,
+      'Content-Disposition': `attachment; filename="documentr-index-${new Date().toISOString().split('T')[0]}.csv"`,
     });
     res.send(csv);
   } catch (err: any) {
