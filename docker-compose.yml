@@ -8,7 +8,7 @@ services:
       - PORT=3110
     volumes:
       - /volume2/docker/documentr:/app/vault
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3110/api/health"]
       interval: 5m
