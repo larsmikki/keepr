@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import db from '../db/database.js';
 import fs from 'fs';
 import JSZip from 'jszip';
@@ -35,7 +35,7 @@ router.get('/download/:id', (req, res) => {
   }
 });
 
-// Streaming ZIP export — avoids loading all files into memory at once
+// Streaming ZIP export â€” avoids loading all files into memory at once
 router.post('/batch', async (req, res) => {
   try {
     const { ids, includeSidecars = true } = req.body as { ids: string[]; includeSidecars?: boolean };
@@ -63,10 +63,10 @@ router.post('/batch', async (req, res) => {
     const date = new Date().toISOString().split('T')[0];
     res.set({
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="documentr-export-${date}.zip"`,
+      'Content-Disposition': `attachment; filename="keepr-export-${date}.zip"`,
     });
 
-    // Pipe the ZIP stream directly to the response — no full buffer in memory
+    // Pipe the ZIP stream directly to the response â€” no full buffer in memory
     zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true })
       .pipe(res)
       .on('error', err => {
@@ -99,7 +99,7 @@ router.get('/csv', (req, res) => {
     const csv = [headers.join(','), ...rows].join('\n');
     res.set({
       'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="documentr-index-${new Date().toISOString().split('T')[0]}.csv"`,
+      'Content-Disposition': `attachment; filename="keepr-index-${new Date().toISOString().split('T')[0]}.csv"`,
     });
     res.send(csv);
   } catch (err: any) {
@@ -108,3 +108,4 @@ router.get('/csv', (req, res) => {
 });
 
 export default router;
+

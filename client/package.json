@@ -1,5 +1,5 @@
-{
-  "name": "documentr-client",
+﻿{
+  "name": "keepr-client",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -32,3 +32,4 @@
     "vite": "^8.0.14"
   }
 }
+

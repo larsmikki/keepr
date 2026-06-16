@@ -4,8 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { marked } from 'marked';
 import mammoth from 'mammoth';
-import { createRequire } from 'module';
-const { readFile: xlsxReadFile, utils: xlsxUtils } = createRequire(import.meta.url)('xlsx');
+import ExcelJS from 'exceljs';
 
 const router = express.Router();
 
@@ -64,13 +63,43 @@ function wrapHtml(body: string, css: string, extra = '') {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><style>${css}</style></head><body>${body}${extra}</body></html>`;
 }
 
+function cellText(cell: ExcelJS.Cell): string {
+  const v = cell.value;
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (v instanceof Date) return v.toLocaleDateString();
+  if (typeof v === 'object') {
+    if ('result' in v) return String((v as ExcelJS.CellFormulaValue).result ?? '');
+    if ('richText' in v) return (v as ExcelJS.CellRichTextValue).richText.map(r => r.text).join('');
+    if ('text' in v) return String((v as ExcelJS.CellHyperlinkValue).text);
+    if ('error' in v) return String((v as ExcelJS.CellErrorValue).error);
+  }
+  return String(v);
+}
+
+function worksheetToHtml(ws: ExcelJS.Worksheet): string {
+  let html = '<table>';
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    html += '<tr>';
+    const lastCol = (row as any).cellCount as number;
+    for (let c = 1; c <= lastCol; c++) {
+      const text = cellText(row.getCell(c)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      html += `<td>${text}</td>`;
+    }
+    html += '</tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
 router.get('/:id', async (req, res) => {
   try {
     const doc = db.prepare('SELECT filePath, storedFilename FROM documents WHERE id = ?').get(req.params.id) as any;
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const ext = path.extname(doc.storedFilename || doc.filePath || '').toLowerCase();
-    const supportedPreviews = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.txt', '.md', '.MD', '.docx', '.xlsx', '.xls', '.xlsb', '.xlsm', '.ods', '.csv', '.json', '.xml', '.yaml', '.yml', '.log'];
+    const supportedPreviews = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.txt', '.md', '.MD', '.docx', '.xlsx', '.xlsm', '.csv', '.json', '.xml', '.yaml', '.yml', '.log'];
 
     if (!supportedPreviews.includes(ext)) {
       return res.status(415).json({
@@ -90,14 +119,18 @@ router.get('/:id', async (req, res) => {
       return res.type('html').send(wrapHtml(html, mdCss));
     }
 
-    if (['.xlsx', '.xls', '.xlsb', '.xlsm', '.ods', '.csv'].includes(ext)) {
-      const workbook = xlsxReadFile(doc.filePath);
-      const sheetTabs = workbook.SheetNames.map((name: string, i: number) => `
-        <button class="tab${i === 0 ? ' active' : ''}" onclick="showSheet(${i})">${name}</button>
+    if (['.xlsx', '.xlsm', '.csv'].includes(ext)) {
+      const workbook = new ExcelJS.Workbook();
+      if (ext === '.csv') {
+        await workbook.csv.readFile(doc.filePath);
+      } else {
+        await workbook.xlsx.readFile(doc.filePath);
+      }
+      const sheetTabs = workbook.worksheets.map((ws, i) => `
+        <button class="tab${i === 0 ? ' active' : ''}" onclick="showSheet(${i})">${ws.name}</button>
       `).join('');
-      const sheetContents = workbook.SheetNames.map((name: string, i: number) => {
-        const sheet = workbook.Sheets[name];
-        const html = sheet['!ref'] ? xlsxUtils.sheet_to_html(sheet) : '<p style="color:#888;padding:16px">Empty sheet</p>';
+      const sheetContents = workbook.worksheets.map((ws, i) => {
+        const html = ws.rowCount > 0 ? worksheetToHtml(ws) : '<p style="color:#888;padding:16px">Empty sheet</p>';
         return `<div class="sheet${i === 0 ? ' active' : ''}">${html}</div>`;
       }).join('');
       const body = `<div class="tabs">${sheetTabs}</div>${sheetContents}`;

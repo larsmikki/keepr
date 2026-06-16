@@ -231,7 +231,7 @@ export const DocumentDetailPage: React.FC = () => {
               const ext = doc.storedFilename?.split('.').pop()?.toLowerCase() || '';
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
               const isPdf = ext === 'pdf';
-              const isTextPreview = ['txt', 'md', 'docx', 'xlsx', 'xls', 'xlsb', 'xlsm', 'ods', 'csv', 'json', 'xml', 'yaml', 'yml', 'log'].includes(ext);
+              const isTextPreview = ['txt', 'md', 'docx', 'xlsx', 'xlsm', 'csv', 'json', 'xml', 'yaml', 'yml', 'log'].includes(ext);
               const fileUrl = `/api/documents/file/${doc.id}`;
               if (isImage) return <img src={fileUrl} alt={doc.title} className="max-h-[740px] w-auto mx-auto rounded-lg" />;
               if (isPdf) return <iframe src={`${fileUrl}#toolbar=0&navpanes=0`} className="w-full h-[740px] rounded-lg" title={doc.title} />;

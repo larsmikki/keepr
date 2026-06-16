@@ -1,4 +1,4 @@
-import type { Document, RescanResult, ImportResult, PaginatedResponse, MetadataSuggestion, AiSettings, AiMetadataSuggestion, DocumentHistoryEntry, LinkedDocument } from '@/types';
+﻿import type { Document, RescanResult, ImportResult, PaginatedResponse, MetadataSuggestion, AiSettings, AiMetadataSuggestion, DocumentHistoryEntry, LinkedDocument } from '@/types';
 
 const BASE = '/api';
 
@@ -11,7 +11,7 @@ async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
     });
   } catch (err: any) {
     if (err?.name === 'AbortError') throw new Error('Request timed out');
-    throw new Error(`Could not reach the Documentr server at ${window.location.origin} — it may have crashed or restarted`);
+    throw new Error(`Could not reach the Keepr server at ${window.location.origin} â€” it may have crashed or restarted`);
   }
   if (!res.ok) {
     const text = await res.text();
@@ -166,7 +166,7 @@ export const api = {
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `documentr-export-${new Date().toISOString().split('T')[0]}.zip`;
+    a.href = url; a.download = `keepr-export-${new Date().toISOString().split('T')[0]}.zip`;
     document.body.appendChild(a); a.click(); a.remove();
     window.URL.revokeObjectURL(url);
   },
@@ -177,7 +177,7 @@ export const api = {
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `documentr-index-${new Date().toISOString().split('T')[0]}.csv`;
+    a.href = url; a.download = `keepr-index-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     window.URL.revokeObjectURL(url);
   },
@@ -208,3 +208,4 @@ export const api = {
   searchDocuments: (q: string) =>
     fetchJson<Document[]>(`/search/search?q=${encodeURIComponent(q)}`),
 };
+

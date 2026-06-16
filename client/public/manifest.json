@@ -1,6 +1,6 @@
-{
-  "name": "Documentr",
-  "short_name": "Documentr",
+﻿{
+  "name": "Keepr",
+  "short_name": "Keepr",
   "description": "Document management app",
   "start_url": "/",
   "display": "standalone",

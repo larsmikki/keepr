@@ -1,5 +1,5 @@
-{
-  "name": "documentr-server",
+﻿{
+  "name": "keepr-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -14,6 +14,7 @@
     "@napi-rs/canvas": "^0.1.80",
     "compression": "^1.7.4",
     "cors": "^2.8.6",
+    "exceljs": "^3.4.0",
     "express": "^4.21.0",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
@@ -24,7 +25,6 @@
     "pdfjs-dist": "^5.4.296",
     "sql.js": "^1.11.0",
     "tesseract.js": "^7.0.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -46,3 +46,4 @@
     "vitest": "^4.1.7"
   }
 }
+

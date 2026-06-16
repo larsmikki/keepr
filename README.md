@@ -1,10 +1,10 @@
-﻿# Documentr
+﻿# Keepr
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fdocumentr-blue?logo=docker)](https://hub.docker.com/r/larsmikki/documentr)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fkeepr-blue?logo=docker)](https://hub.docker.com/r/larsmikki/keepr)
 [![Node 20](https://img.shields.io/badge/Node-20-brightgreen?logo=node.js)](https://nodejs.org/)
 
-**Documentr** is a self-hosted personal Documentr. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search â€” no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Documentr can rebuild its index from the sidecars.
+**Keepr** is a self-hosted personal file vault. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search â€” no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Keepr can rebuild its index from the sidecars.
 
 ## Features
 
@@ -31,37 +31,37 @@ Works on Synology, Unraid, TrueNAS, QNAP, Proxmox, or a plain Docker host.
 
 ```bash
 docker run -d \
-  --name documentr \
+  --name keepr \
   -p 3110:3110 \
-  -v documentr_data:/app/vault \
+  -v keepr_data:/app/vault \
   --restart unless-stopped \
-  larsmikki/documentr:latest
+  larsmikki/keepr:latest
 ```
 
 Or with Compose:
 
 ```yaml
 services:
-  documentr:
-    image: larsmikki/documentr:latest
-    container_name: documentr
+  keepr:
+    image: larsmikki/keepr:latest
+    container_name: keepr
     ports:
       - "3110:3110"
     environment:
       - PORT=3110
     volumes:
-      - documentr_data:/app/vault
+      - keepr_data:/app/vault
     restart: unless-stopped
 
 volumes:
-  documentr_data:
+  keepr_data:
 ```
 
 To keep the vault on a host folder you can browse directly (recommended), bind-mount instead of using a named volume:
 
 ```yaml
 volumes:
-  - /home/user/Documents/DocumentVault:/app/vault
+  - /home/user/Documents/Keepr:/app/vault
 ```
 
 ### 2. Local install on Windows
@@ -69,8 +69,8 @@ volumes:
 Requires [Git for Windows](https://git-scm.com/download/win) and [Node.js 20+](https://nodejs.org/).
 
 ```powershell
-git clone https://github.com/larsmikki/documentr.git
-cd documentr
+git clone https://github.com/larsmikki/keepr.git
+cd keepr
 npm install
 npm run dev
 ```
@@ -86,8 +86,8 @@ npm start
 
 ```bash
 brew install node git
-git clone https://github.com/larsmikki/documentr.git
-cd documentr
+git clone https://github.com/larsmikki/keepr.git
+cd keepr
 npm install
 npm run dev
 ```
@@ -102,8 +102,8 @@ Debian/Ubuntu:
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs git
 
-git clone https://github.com/larsmikki/documentr.git
-cd documentr
+git clone https://github.com/larsmikki/keepr.git
+cd keepr
 npm install
 npm run dev
 ```
@@ -158,5 +158,6 @@ npm test
 
 ## Support
 
-If Documentr saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.
+If Keepr saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.
+
 

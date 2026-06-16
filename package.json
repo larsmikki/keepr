@@ -1,5 +1,5 @@
-{
-  "name": "documentr",
+﻿{
+  "name": "keepr",
   "version": "1.0.0",
   "private": true,
   "workspaces": [
@@ -13,7 +13,8 @@
     "test": "npm run test -w server"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "vite": "^8.0.14"
   }
 }
+

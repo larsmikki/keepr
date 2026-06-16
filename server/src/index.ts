@@ -1,4 +1,4 @@
-import { initDb } from './db/connection.js';
+﻿import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrate.js';
 import { createApp } from './app.js';
 import { config } from './config.js';
@@ -25,7 +25,7 @@ async function main() {
 
   const app = createApp();
   app.listen(config.port, () => {
-    console.log(`Documentr server running on http://localhost:${config.port}`);
+    console.log(`Keepr server running on http://localhost:${config.port}`);
   });
 }
 
@@ -33,3 +33,4 @@ main().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+

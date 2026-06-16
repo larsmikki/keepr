@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+﻿import React, { useEffect, useState, useCallback } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useDocuments } from '@/contexts/DocumentsContext'
@@ -33,7 +33,7 @@ const StarIcon = () => (
   </svg>
 )
 const LogoMark = () => (
-  <img src="/favicon.svg" width={28} height={28} alt="Documentr" className="shrink-0" />
+  <img src="/favicon.svg" width={28} height={28} alt="Keepr" className="shrink-0" />
 )
 
 // Broadcast channel for global shortcut events that pages can listen to
@@ -158,7 +158,7 @@ export default function Layout() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group" style={{ textDecoration: 'none' }}>
             <LogoMark />
-            <span className="text-xl font-extrabold tracking-tight gradient-text select-none">Documentr</span>
+            <span className="text-xl font-extrabold tracking-tight gradient-text select-none">Keepr</span>
           </Link>
 
           <nav className="flex items-center gap-0.5">
@@ -207,7 +207,7 @@ export default function Layout() {
           <div className="px-4 py-2 rounded-lg shadow-lg border text-sm font-mono flex items-center gap-2" style={{ backgroundColor: theme.surface, borderColor: theme.accent, color: theme.text }}>
             <span style={{ color: theme.text2 }}>Navigate:</span>
             <kbd className="px-2 py-0.5 rounded border" style={{ backgroundColor: theme.bg, borderColor: theme.border }}>g</kbd>
-            <span style={{ color: theme.text2 }}>→</span>
+            <span style={{ color: theme.text2 }}>â†’</span>
             <span className="text-xs" style={{ color: theme.text2 }}>d=Docs, h=Home, f=Favorites, i=Inbox, s=Settings</span>
           </div>
         </div>
@@ -217,3 +217,4 @@ export default function Layout() {
     </div>
   )
 }
+
