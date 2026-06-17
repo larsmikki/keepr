@@ -4,11 +4,11 @@
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Fkeepr-blue?logo=docker)](https://hub.docker.com/r/larsmikki/keepr)
 [![Node 20](https://img.shields.io/badge/Node-20-brightgreen?logo=node.js)](https://nodejs.org/)
 
-**Keepr** is a self-hosted personal file vault. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search â€” no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Keepr can rebuild its index from the sidecars.
+**Keepr** is a self-hosted personal file vault. Files stay as real files on disk with portable `.sidecar.json` sidecars and an indexed SQLite database for search — no proprietary blobs, no cloud, no lock-in. Drop the vault on any disk and Keepr can rebuild its index from the sidecars.
 
 ## Features
 
-- **Files-on-disk storage** â€” documents live at `vault/documents/{year}/{month}/{safe_filename}`, exactly where you can read them yourself
+- **Files-on-disk storage** — documents live at `vault/documents/{year}/{month}/{safe_filename}`, exactly where you can read them yourself
 - **Sidecar metadata** â€” every file has a `.sidecar.json` next to it so the DB can be rebuilt from disk at any time
 - **Full-text search** â€” across titles, descriptions, vendors, tags, and notes
 - **Rich metadata** â€” categories, document types, vendor, amounts, dates, tags, people, assets, reminders
@@ -131,20 +131,20 @@ vault/
         2026-05-21_acme_invoice_receipt.pdf.sidecar.json
 ```
 
-The `.sidecar.json` files are the source of truth â€” if the database is lost, run **Settings â†’ Rescan** to rebuild it from the files on disk.
+The `.sidecar.json` files are the source of truth — if the database is lost, run **Settings → Rescan** to rebuild it from the files on disk.
 
 ## Usage
 
 | Action | How |
 |--------|-----|
 | Upload a document | Click **Upload** and drop a file |
-| Edit metadata | Open a document â†’ edit fields inline |
-| File from inbox | Open **Inbox** â†’ assign category and metadata |
-| Bulk update | Select multiple cards â†’ toolbar appears |
-| Find missing/moved files | **Settings â†’ Rescan** |
-| Backup | **Settings â†’ Export** |
-| Restore | **Settings â†’ Import** |
-| Change theme | **Settings â†’ Themes** |
+| Edit metadata | Open a document → edit fields inline |
+| File from inbox | Open **Inbox** → assign category and metadata |
+| Bulk update | Select multiple cards → toolbar appears |
+| Find missing/moved files | **Settings → Rescan** |
+| Backup | **Settings → Export** |
+| Restore | **Settings → Import** |
+| Change theme | **Settings → Themes** |
 
 ## Tests
 
