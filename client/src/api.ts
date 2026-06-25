@@ -1,4 +1,4 @@
-﻿import type { Document, RescanResult, ImportResult, PaginatedResponse, MetadataSuggestion, AiSettings, AiMetadataSuggestion, DocumentHistoryEntry, LinkedDocument } from '@/types';
+import type { Document, RescanResult, ImportResult, PaginatedResponse, MetadataSuggestion, AiSettings, AiMetadataSuggestion, DocumentHistoryEntry, LinkedDocument } from '@/types';
 
 const BASE = '/api';
 

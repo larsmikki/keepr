@@ -1,4 +1,4 @@
-﻿services:
+services:
   keepr:
     image: larsmikki/keepr:latest
     container_name: keepr

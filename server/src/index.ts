@@ -1,4 +1,4 @@
-﻿import { initDb } from './db/connection.js';
+import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrate.js';
 import { createApp } from './app.js';
 import { config } from './config.js';
